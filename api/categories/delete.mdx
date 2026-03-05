@@ -1,0 +1,66 @@
+---
+title: 'Delete Category'
+description: 'Soft-delete a product category (marks as inactive)'
+---
+
+<api method="DELETE" path="/api/categorias/{id}" />
+
+Soft-delete a category by marking it as inactive. The category remains in the database but won't appear in lists. Admin role required.
+
+<Warning>
+  This is a soft delete — the category is marked `Activa = false` but not removed from the database. Products in this category are unaffected.
+</Warning>
+
+## Authentication
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token with **Admin** role
+</ParamField>
+
+## Path Parameters
+
+<ParamField path="id" type="integer" required>
+  Category ID to delete
+</ParamField>
+
+## Response
+
+Returns `204 No Content` on success.
+
+## Example Request
+
+```bash cURL
+curl -X DELETE https://api.cafeies.local/api/categorias/5 \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```
+
+## Status Codes
+
+| Code | Description |
+|------|-------------|
+| 204 | Category deleted successfully |
+| 401 | Unauthorized |
+| 403 | Forbidden (not Admin) |
+| 404 | Category not found |
+
+## Implementation Details
+
+- This is a **soft delete** — the record remains in the database with `Activa = false`
+- Inactive categories do not appear in the `GET /api/categorias` endpoint
+- Products associated with this category are not affected
+- The mobile app will not show products from inactive categories in filters
+- To permanently delete, you would need direct database access
+- Source: `CafeIES.API/Controllers/CategoriasController.cs:50`
+
+## Best Practices
+
+<Tip>
+  Before deleting a category, consider moving its products to another category or marking them inactive to avoid orphaned products.
+</Tip>
+
+## Related Endpoints
+
+- [List Categories](/api/categories/list) - View all categories
+- [Create Category](/api/categories/create) - Add new category
+- [Update Category](/api/categories/update) - Modify category
+- [List Products](/api/products/list) - Filter products by category

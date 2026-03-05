@@ -1,0 +1,77 @@
+---
+title: 'List Categories'
+description: 'Retrieve all active product categories'
+---
+
+<api method="GET" path="/api/categorias" />
+
+Retrieve all active categories ordered by their display order. Categories are used to organize products in the menu.
+
+## Authentication
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token (any authenticated user)
+</ParamField>
+
+## Response
+
+<ResponseField name="categories" type="array">
+  List of active categories
+  
+  <Expandable title="CategoriaDto properties">
+    <ResponseField name="id" type="integer">
+      Category ID
+    </ResponseField>
+    
+    <ResponseField name="nombre" type="string">
+      Category name (e.g., "Bocadillos", "Bebidas")
+    </ResponseField>
+    
+    <ResponseField name="emoji" type="string">
+      Emoji icon representing the category (e.g., 🥪, 🥤)
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Example Request
+
+```bash cURL
+curl -X GET https://api.cafeies.local/api/categorias \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```
+
+## Example Response
+
+```json
+[
+  {
+    "id": 1,
+    "nombre": "Bocadillos",
+    "emoji": "🥪"
+  },
+  {
+    "id": 2,
+    "nombre": "Bebidas",
+    "emoji": "🥤"
+  },
+  {
+    "id": 3,
+    "nombre": "Postres",
+    "emoji": "🍰"
+  }
+]
+```
+
+## Implementation Details
+
+- Only returns categories where `Activa = true`
+- Results are ordered by the `Orden` field (lowest to highest)
+- This endpoint is used by the mobile app to display category filters
+- Source: `CafeIES.API/Controllers/CategoriasController.cs:17`
+
+## Related Endpoints
+
+- [Create Category](/api/categories/create) - Add new category (Admin only)
+- [Update Category](/api/categories/update) - Modify category (Admin only)
+- [Delete Category](/api/categories/delete) - Soft-delete category (Admin only)
+- [List Products](/api/products/list) - Browse products by category

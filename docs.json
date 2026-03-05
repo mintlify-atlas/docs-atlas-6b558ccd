@@ -94,12 +94,22 @@
             ]
           },
           {
+            "group": "Categories",
+            "pages": [
+              "api/categories/list",
+              "api/categories/create",
+              "api/categories/update",
+              "api/categories/delete"
+            ]
+          },
+          {
             "group": "Admin",
             "pages": [
               "api/admin/dashboard",
               "api/admin/users",
               "api/admin/invitations",
-              "api/admin/schedules"
+              "api/admin/schedules",
+              "api/admin/orders"
             ]
           }
         ]

@@ -1,0 +1,206 @@
+---
+title: 'Orders History'
+description: 'Retrieve historical orders with filtering options'
+---
+
+<api method="GET" path="/api/admin/pedidos" />
+
+Retrieve historical orders with optional date and status filtering. Returns up to 200 most recent orders. Admin role required.
+
+## Authentication
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token with **Admin** role
+</ParamField>
+
+## Query Parameters
+
+<ParamField query="desde" type="datetime" optional>
+  Start date filter (UTC). Returns orders created on or after this date.
+</ParamField>
+
+<ParamField query="hasta" type="datetime" optional>
+  End date filter (UTC). Returns orders created on or before this date.
+</ParamField>
+
+<ParamField query="estado" type="enum" optional>
+  Filter by order status:
+  - `0` - Pendiente
+  - `1` - EnPreparacion
+  - `2` - Listo
+  - `3` - Entregado
+  - `4` - Cancelado
+</ParamField>
+
+<Note>
+  Without filters, returns the 200 most recent orders across all time periods and statuses.
+</Note>
+
+## Response
+
+<ResponseField name="orders" type="array">
+  List of orders matching the filters
+  
+  <Expandable title="PedidoDto properties">
+    <ResponseField name="id" type="integer">
+      Order ID
+    </ResponseField>
+    
+    <ResponseField name="numeroPedido" type="integer">
+      Human-readable order number (sequential per day)
+    </ResponseField>
+    
+    <ResponseField name="nombreUsuario" type="string">
+      Full name of the user who placed the order
+    </ResponseField>
+    
+    <ResponseField name="emailUsuario" type="string">
+      Email of the user
+    </ResponseField>
+    
+    <ResponseField name="fechaCreacion" type="datetime">
+      Order creation timestamp (UTC)
+    </ResponseField>
+    
+    <ResponseField name="estado" type="enum">
+      Current order status (0-4)
+    </ResponseField>
+    
+    <ResponseField name="metodoPago" type="enum">
+      Payment method: 0 (Tarjeta), 1 (GooglePay), 2 (ApplePay)
+    </ResponseField>
+    
+    <ResponseField name="total" type="decimal">
+      Order total in euros
+    </ResponseField>
+    
+    <ResponseField name="notas" type="string" optional>
+      Customer notes (e.g., "sin lechuga")
+    </ResponseField>
+    
+    <ResponseField name="lineas" type="array">
+      Order line items
+      
+      <Expandable title="LineaPedidoDto properties">
+        <ResponseField name="productoId" type="integer">
+          Product ID
+        </ResponseField>
+        
+        <ResponseField name="nombreProducto" type="string">
+          Product name at time of purchase
+        </ResponseField>
+        
+        <ResponseField name="cantidad" type="integer">
+          Quantity ordered
+        </ResponseField>
+        
+        <ResponseField name="precioUnitario" type="decimal">
+          Price per unit at time of purchase
+        </ResponseField>
+        
+        <ResponseField name="subtotal" type="decimal">
+          Line item total (cantidad × precioUnitario)
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Example Requests
+
+<CodeGroup>
+
+```bash All Recent Orders
+curl -X GET https://api.cafeies.local/api/admin/pedidos \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```
+
+```bash Filter by Date Range
+curl -X GET "https://api.cafeies.local/api/admin/pedidos?desde=2024-01-01T00:00:00Z&hasta=2024-01-31T23:59:59Z" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```
+
+```bash Filter by Status
+curl -X GET "https://api.cafeies.local/api/admin/pedidos?estado=3" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```
+
+```bash Combined Filters
+curl -X GET "https://api.cafeies.local/api/admin/pedidos?desde=2024-03-01T00:00:00Z&estado=4" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```
+
+</CodeGroup>
+
+## Example Response
+
+```json
+[
+  {
+    "id": 42,
+    "numeroPedido": 15,
+    "nombreUsuario": "María García",
+    "emailUsuario": "maria@example.com",
+    "fechaCreacion": "2024-03-05T11:15:30Z",
+    "estado": 3,
+    "metodoPago": 0,
+    "total": 8.50,
+    "notas": "Sin lechuga",
+    "lineas": [
+      {
+        "productoId": 5,
+        "nombreProducto": "Bocadillo de jamón",
+        "cantidad": 1,
+        "precioUnitario": 3.50,
+        "subtotal": 3.50
+      },
+      {
+        "productoId": 12,
+        "nombreProducto": "Coca-Cola",
+        "cantidad": 2,
+        "precioUnitario": 2.50,
+        "subtotal": 5.00
+      }
+    ]
+  }
+]
+```
+
+## Status Codes
+
+| Code | Description |
+|------|-------------|
+| 200 | Orders retrieved successfully |
+| 401 | Unauthorized |
+| 403 | Forbidden (not Admin) |
+
+## Implementation Details
+
+- Returns up to **200 orders** ordered by most recent first
+- All timestamps are in UTC
+- Includes full order details with line items and user information
+- Uses eager loading for optimal performance (includes Lineas, Producto, Usuario)
+- Source: `CafeIES.API/Controllers/AdminController.cs:171`
+
+## Use Cases
+
+<CardGroup cols={2}>
+  <Card title="Daily Reports" icon="calendar-day">
+    Generate end-of-day sales reports by filtering to today's orders
+  </Card>
+  <Card title="Revenue Analysis" icon="chart-line">
+    Calculate revenue by date range excluding canceled orders
+  </Card>
+  <Card title="Order Tracking" icon="truck">
+    Monitor order fulfillment by filtering by status
+  </Card>
+  <Card title="Customer History" icon="user">
+    View a customer's order history (combine with user email search)
+  </Card>
+</CardGroup>
+
+## Related Endpoints
+
+- [Dashboard](/api/admin/dashboard) - View current orders in progress
+- [Update Order Status](/api/orders/update-status) - Change order state
+- [Create Order](/api/orders/create) - Place new order

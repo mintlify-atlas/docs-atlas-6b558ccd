@@ -1,0 +1,89 @@
+---
+title: 'Update Category'
+description: 'Modify an existing product category'
+---
+
+<api method="PUT" path="/api/categorias/{id}" />
+
+Update a category's name and emoji. Admin role required.
+
+## Authentication
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token with **Admin** role
+</ParamField>
+
+## Path Parameters
+
+<ParamField path="id" type="integer" required>
+  Category ID to update
+</ParamField>
+
+## Request Body
+
+<ParamField body="nombre" type="string" required>
+  Updated category name (max 80 characters)
+</ParamField>
+
+<ParamField body="emoji" type="string" required>
+  Updated emoji icon (max 10 characters)
+</ParamField>
+
+## Response
+
+<ResponseField name="id" type="integer">
+  Category ID
+</ResponseField>
+
+<ResponseField name="nombre" type="string">
+  Updated category name
+</ResponseField>
+
+<ResponseField name="emoji" type="string">
+  Updated category emoji
+</ResponseField>
+
+## Example Request
+
+```bash cURL
+curl -X PUT https://api.cafeies.local/api/categorias/5 \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "nombre": "Snacks Saludables",
+    "emoji": "🥗"
+  }'
+```
+
+## Example Response
+
+```json
+{
+  "id": 5,
+  "nombre": "Snacks Saludables",
+  "emoji": "🥗"
+}
+```
+
+## Status Codes
+
+| Code | Description |
+|------|-------------|
+| 200 | Category updated successfully |
+| 400 | Invalid request body |
+| 401 | Unauthorized |
+| 403 | Forbidden (not Admin) |
+| 404 | Category not found |
+
+## Implementation Details
+
+- This endpoint only updates `Nombre` and `Emoji` fields
+- The `Activa` and `Orden` fields remain unchanged
+- All products in this category retain their association
+- Source: `CafeIES.API/Controllers/CategoriasController.cs:38`
+
+## Related Endpoints
+
+- [List Categories](/api/categories/list) - View all categories
+- [Create Category](/api/categories/create) - Add new category
+- [Delete Category](/api/categories/delete) - Remove category

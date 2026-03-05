@@ -1,0 +1,85 @@
+---
+title: 'Create Category'
+description: 'Add a new product category'
+---
+
+<api method="POST" path="/api/categorias" />
+
+Create a new category to organize products in the menu. Admin role required.
+
+## Authentication
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token with **Admin** role
+</ParamField>
+
+## Request Body
+
+<ParamField body="nombre" type="string" required>
+  Category name (max 80 characters)
+</ParamField>
+
+<ParamField body="emoji" type="string" required>
+  Emoji icon representing the category (max 10 characters)
+</ParamField>
+
+<Note>
+  The `Orden` field is auto-generated based on the current number of categories. You can update it later using the Update endpoint.
+</Note>
+
+## Response
+
+<ResponseField name="id" type="integer">
+  Generated category ID
+</ResponseField>
+
+<ResponseField name="nombre" type="string">
+  Category name
+</ResponseField>
+
+<ResponseField name="emoji" type="string">
+  Category emoji
+</ResponseField>
+
+## Example Request
+
+```bash cURL
+curl -X POST https://api.cafeies.local/api/categorias \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "nombre": "Snacks",
+    "emoji": "🍿"
+  }'
+```
+
+## Example Response
+
+```json
+{
+  "id": 5,
+  "nombre": "Snacks",
+  "emoji": "🍿"
+}
+```
+
+## Status Codes
+
+| Code | Description |
+|------|-------------|
+| 201 | Category created successfully |
+| 400 | Invalid request (missing fields, validation errors) |
+| 401 | Unauthorized (no token or invalid token) |
+| 403 | Forbidden (user is not Admin) |
+
+## Implementation Details
+
+- New categories are created with `Activa = true` by default
+- The `Orden` field determines display order in the UI
+- Source: `CafeIES.API/Controllers/CategoriasController.cs:28`
+
+## Related Endpoints
+
+- [List Categories](/api/categories/list) - View all categories
+- [Update Category](/api/categories/update) - Modify existing category
+- [Delete Category](/api/categories/delete) - Remove category
