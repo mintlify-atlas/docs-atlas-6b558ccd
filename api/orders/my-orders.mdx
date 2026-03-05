@@ -1,0 +1,207 @@
+---
+title: 'My Orders'
+api: 'GET /api/pedidos/mis-pedidos'
+description: 'Retrieve the order history for the authenticated user'
+---
+
+## Overview
+
+Returns the most recent 20 orders for the authenticated user, ordered by creation date (newest first). Includes full order details with product information and line items.
+
+## Authentication
+
+<Warning>
+  **Required:** Bearer token (JWT)
+  
+  **Roles:** All authenticated users (Alumno, Profesor, Personal, Admin)
+</Warning>
+
+## Query Parameters
+
+This endpoint does not accept any query parameters. It automatically returns orders for the authenticated user based on the JWT token.
+
+## Response
+
+Returns an array of order objects, limited to the 20 most recent orders.
+
+<ResponseField name="[]" type="array">
+  Array of order objects
+  
+  <ResponseField name="Id" type="integer">
+    Unique identifier for the order
+  </ResponseField>
+  
+  <ResponseField name="NumeroPedido" type="integer">
+    Sequential order number for the day
+  </ResponseField>
+  
+  <ResponseField name="UsuarioNombre" type="string">
+    Full name of the user who placed the order
+  </ResponseField>
+  
+  <ResponseField name="UsuarioEmail" type="string">
+    Email of the user who placed the order
+  </ResponseField>
+  
+  <ResponseField name="FechaCreacion" type="datetime">
+    UTC timestamp when the order was created
+  </ResponseField>
+  
+  <ResponseField name="Estado" type="enum">
+    Current order status:
+    - `0` - Pendiente (Pending)
+    - `1` - EnPreparacion (In Preparation)
+    - `2` - Listo (Ready for pickup)
+    - `3` - Entregado (Delivered)
+    - `4` - Cancelado (Cancelled)
+  </ResponseField>
+  
+  <ResponseField name="MetodoPago" type="enum">
+    Payment method used:
+    - `0` - Tarjeta (Credit/Debit Card)
+    - `1` - GooglePay
+    - `2` - ApplePay
+  </ResponseField>
+  
+  <ResponseField name="Total" type="decimal">
+    Total price of the order
+  </ResponseField>
+  
+  <ResponseField name="Notas" type="string">
+    Customer notes for the order (may be null)
+  </ResponseField>
+  
+  <ResponseField name="Lineas" type="array">
+    Array of order line items
+    
+    <ResponseField name="ProductoId" type="integer">
+      Product ID
+    </ResponseField>
+    
+    <ResponseField name="ProductoNombre" type="string">
+      Product name
+    </ResponseField>
+    
+    <ResponseField name="Cantidad" type="integer">
+      Quantity ordered
+    </ResponseField>
+    
+    <ResponseField name="PrecioUnitario" type="decimal">
+      Unit price at the time of purchase
+    </ResponseField>
+    
+    <ResponseField name="Subtotal" type="decimal">
+      Line subtotal (Cantidad × PrecioUnitario)
+    </ResponseField>
+  </ResponseField>
+</ResponseField>
+
+## Example Request
+
+```bash
+curl -X GET https://api.cafeies.com/api/pedidos/mis-pedidos \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+## Example Response
+
+```json
+[
+  {
+    "Id": 158,
+    "NumeroPedido": 42,
+    "UsuarioNombre": "Juan Pérez",
+    "UsuarioEmail": "juan.perez@ies.example.com",
+    "FechaCreacion": "2026-03-05T10:25:30Z",
+    "Estado": 2,
+    "MetodoPago": 0,
+    "Total": 8.50,
+    "Notas": "Sin lechuga en el bocadillo",
+    "Lineas": [
+      {
+        "ProductoId": 3,
+        "ProductoNombre": "Bocadillo de jamón",
+        "Cantidad": 2,
+        "PrecioUnitario": 3.50,
+        "Subtotal": 7.00
+      },
+      {
+        "ProductoId": 7,
+        "ProductoNombre": "Coca-Cola",
+        "Cantidad": 1,
+        "PrecioUnitario": 1.50,
+        "Subtotal": 1.50
+      }
+    ]
+  },
+  {
+    "Id": 145,
+    "NumeroPedido": 28,
+    "UsuarioNombre": "Juan Pérez",
+    "UsuarioEmail": "juan.perez@ies.example.com",
+    "FechaCreacion": "2026-03-04T11:15:00Z",
+    "Estado": 3,
+    "MetodoPago": 1,
+    "Total": 4.50,
+    "Notas": null,
+    "Lineas": [
+      {
+        "ProductoId": 12,
+        "ProductoNombre": "Café con leche",
+        "Cantidad": 1,
+        "PrecioUnitario": 1.50,
+        "Subtotal": 1.50
+      },
+      {
+        "ProductoId": 8,
+        "ProductoNombre": "Croissant",
+        "Cantidad": 1,
+        "PrecioUnitario": 3.00,
+        "Subtotal": 3.00
+      }
+    ]
+  }
+]
+```
+
+## Error Responses
+
+<ResponseExample>
+```json 401 - Unauthorized
+{
+  "type": "https://tools.ietf.org/html/rfc7235#section-3.1",
+  "title": "Unauthorized",
+  "status": 401
+}
+```
+</ResponseExample>
+
+## Implementation Details
+
+- **Query**: `SELECT TOP 20 * FROM Pedidos WHERE UsuarioId = @userId ORDER BY FechaCreacion DESC`
+- **Eager Loading**: Includes related entities (User, LineaPedido, Producto) to minimize database queries
+- **User Identification**: Extracts user ID from JWT token claim `ClaimTypes.NameIdentifier`
+- **No Pagination**: Currently returns a fixed limit of 20 orders. Future versions may support pagination.
+
+## Order Status Meanings
+
+| Status | Value | Description |
+|--------|-------|-------------|
+| Pendiente | 0 | Order paid and submitted, waiting for cafeteria to acknowledge |
+| EnPreparacion | 1 | Cafeteria is preparing the order |
+| Listo | 2 | Order is ready for pickup at the counter |
+| Entregado | 3 | Student has picked up the order |
+| Cancelado | 4 | Order was cancelled (by user or admin) |
+
+## Use Cases
+
+- **Order History**: Display past orders in the mobile app
+- **Reorder**: Allow users to quickly reorder items from previous orders
+- **Receipt Access**: Users can view order details and totals
+- **Support**: Customer service can reference order details
+
+## Related Endpoints
+
+- [Create Order](/api/orders/create) - Place a new order
+- [Check Schedule](/api/orders/check-schedule) - Check if ordering is currently allowed
+- [Update Order Status](/api/orders/update-status) - Change order state (Admin/Staff only)

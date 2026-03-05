@@ -1,122 +1,140 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mint Starter Kit",
+  "name": "CaféIES",
+  "theme": "almond",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#6421e6",
+    "light": "#b48cf4",
+    "dark": "#e2dae9"
   },
-  "favicon": "/favicon.svg",
+  "favicon": "https://media.brand.dev/4c8468d0-c3d2-4947-b8b0-3850135dc59e.png",
+  "logo": {
+    "light": "https://media.brand.dev/4c8468d0-c3d2-4947-b8b0-3850135dc59e.png",
+    "dark": "https://media.brand.dev/4c8468d0-c3d2-4947-b8b0-3850135dc59e.png"
+  },
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/JoseGlezHerrera/CafeteriaInsti"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/JoseGlezHerrera/CafeteriaInsti"
+    }
+  },
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "Documentation",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Get Started",
             "pages": [
-              "index",
+              "introduction",
               "quickstart",
-              "development"
+              "architecture"
             ]
           },
           {
-            "group": "Customization",
+            "group": "Core Features",
             "pages": [
-              "essentials/settings",
-              "essentials/navigation"
+              "features/user-management",
+              "features/order-management",
+              "features/schedule-restrictions",
+              "features/real-time-updates"
             ]
           },
           {
-            "group": "Writing content",
+            "group": "Applications",
             "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
+              "apps/mobile-app",
+              "apps/admin-panel",
+              "apps/api"
             ]
           },
           {
-            "group": "AI tools",
+            "group": "Configuration",
             "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
+              "configuration/database",
+              "configuration/authentication",
+              "configuration/time-schedules"
             ]
           }
         ]
       },
       {
-        "tab": "API reference",
+        "tab": "API Reference",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "Authentication",
             "pages": [
-              "api-reference/introduction"
+              "api/auth/login",
+              "api/auth/register-student",
+              "api/auth/register-invitation",
+              "api/auth/refresh"
             ]
           },
           {
-            "group": "Endpoint examples",
+            "group": "Orders",
             "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "api/orders/create",
+              "api/orders/my-orders",
+              "api/orders/check-schedule",
+              "api/orders/update-status"
+            ]
+          },
+          {
+            "group": "Products",
+            "pages": [
+              "api/products/list",
+              "api/products/create",
+              "api/products/update",
+              "api/products/toggle-active"
+            ]
+          },
+          {
+            "group": "Admin",
+            "pages": [
+              "api/admin/dashboard",
+              "api/admin/users",
+              "api/admin/invitations",
+              "api/admin/schedules"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Guides",
+        "groups": [
+          {
+            "group": "Deployment",
+            "pages": [
+              "guides/deployment/requirements",
+              "guides/deployment/api-setup",
+              "guides/deployment/database-migration",
+              "guides/deployment/mobile-deployment"
+            ]
+          },
+          {
+            "group": "User Guides",
+            "pages": [
+              "guides/users/student-registration",
+              "guides/users/placing-orders",
+              "guides/users/order-tracking"
+            ]
+          },
+          {
+            "group": "Admin Guides",
+            "pages": [
+              "guides/admin/managing-users",
+              "guides/admin/managing-products",
+              "guides/admin/generating-invitations",
+              "guides/admin/configuring-schedules"
             ]
           }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
-  },
-  "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
-    }
-  },
-  "contextual": {
-    "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
-  },
-  "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
-    }
+    ]
   }
 }

@@ -1,0 +1,658 @@
+---
+title: Time Schedule Configuration
+description: Configure FranjaHoraria (time windows) for student ordering restrictions
+---
+
+CaféIES restricts when students can place orders based on their assigned shift (Turno). Time windows are configured via `FranjaHoraria` entries in the database and managed through the admin panel.
+
+## Overview
+
+Time schedules control ordering availability:
+
+- **Students (Alumnos)**: Can only order during active time windows for their shift
+- **Teachers/Staff/Admins**: No time restrictions, can order anytime
+
+<Note>
+  Time schedules are checked in real-time when students attempt to add items to their cart or place orders.
+</Note>
+
+## Default Time Windows
+
+The system seeds 6 default time windows on first run (2 per shift):
+
+### Morning Shift (Turno.Manana)
+
+| Description | Start Time | End Time | Duration |
+|-------------|------------|----------|----------|
+| Before entering | 07:30 | 08:00 | 30 min |
+| Break (Recreo) | 11:00 | 11:30 | 30 min |
+
+### Afternoon Shift (Turno.Tarde)
+
+| Description | Start Time | End Time | Duration |
+|-------------|------------|----------|----------|
+| Before entering | 13:45 | 14:00 | 15 min |
+| Break (Recreo) | 17:00 | 17:30 | 30 min |
+
+### Evening Shift (Turno.Noche)
+
+| Description | Start Time | End Time | Duration |
+|-------------|------------|----------|----------|
+| Before entering | 20:45 | 21:00 | 15 min |
+| Break (Recreo) | 23:00 | 23:20 | 20 min |
+
+### Seed Data in AppDbContext
+
+These defaults are seeded in the database migration:
+
+```csharp Data/AppDbContext.cs:93
+mb.Entity<FranjaHoraria>().HasData(
+    // Morning shift
+    new FranjaHoraria { Id = 1, Turno = Turno.Manana, Descripcion = "Antes de entrar", HoraInicio = "07:30", HoraFin = "08:00" },
+    new FranjaHoraria { Id = 2, Turno = Turno.Manana, Descripcion = "Recreo",          HoraInicio = "11:00", HoraFin = "11:30" },
+    
+    // Afternoon shift
+    new FranjaHoraria { Id = 3, Turno = Turno.Tarde,  Descripcion = "Antes de entrar", HoraInicio = "13:45", HoraFin = "14:00" },
+    new FranjaHoraria { Id = 4, Turno = Turno.Tarde,  Descripcion = "Recreo",          HoraInicio = "17:00", HoraFin = "17:30" },
+    
+    // Evening shift
+    new FranjaHoraria { Id = 5, Turno = Turno.Noche,  Descripcion = "Antes de entrar", HoraInicio = "20:45", HoraFin = "21:00" },
+    new FranjaHoraria { Id = 6, Turno = Turno.Noche,  Descripcion = "Recreo",          HoraInicio = "23:00", HoraFin = "23:20" }
+);
+```
+
+## FranjaHoraria Entity
+
+Time windows are represented by the `FranjaHoraria` entity:
+
+```csharp Shared/Models/Entities.cs:55
+public class FranjaHoraria
+{
+    public int Id { get; set; }
+
+    public Turno Turno { get; set; }  // Manana, Tarde, Noche
+
+    [Required, MaxLength(60)]
+    public string Descripcion { get; set; } = string.Empty;  // e.g., "Recreo"
+
+    /// <summary>Start time in HH:mm format (e.g., "11:00")</summary>
+    [Required, MaxLength(5)]
+    public string HoraInicio { get; set; } = string.Empty;
+
+    /// <summary>End time in HH:mm format (e.g., "11:30")</summary>
+    [Required, MaxLength(5)]
+    public string HoraFin { get; set; } = string.Empty;
+
+    public bool Activa { get; set; } = true;
+
+    /// <summary>
+    /// Checks if DateTime.Now falls within this time window.
+    /// </summary>
+    [NotMapped]
+    public bool EstaActiva
+    {
+        get
+        {
+            if (!Activa) return false;
+            var ahora = TimeOnly.FromDateTime(DateTime.Now);
+            var inicio = TimeOnly.Parse(HoraInicio);
+            var fin = TimeOnly.Parse(HoraFin);
+            return ahora >= inicio && ahora <= fin;
+        }
+    }
+}
+```
+
+### Key Properties
+
+<ResponseField name="Turno" type="enum" required>
+  The shift this time window applies to: `Manana`, `Tarde`, or `Noche`.
+</ResponseField>
+
+<ResponseField name="Descripcion" type="string" required>
+  Human-readable description displayed to users (e.g., "Break", "Before entering").
+</ResponseField>
+
+<ResponseField name="HoraInicio" type="string" required>
+  Start time in 24-hour format `HH:mm` (e.g., `"11:00"`).
+</ResponseField>
+
+<ResponseField name="HoraFin" type="string" required>
+  End time in 24-hour format `HH:mm` (e.g., `"11:30"`).
+</ResponseField>
+
+<ResponseField name="Activa" type="boolean">
+  Whether this time window is active. Inactive windows are ignored by the system.
+</ResponseField>
+
+<ResponseField name="EstaActiva" type="boolean (computed)">
+  **Read-only computed property**. Returns `true` if the current time falls within this window AND the window is active.
+</ResponseField>
+
+## Schedule Validation (HorarioService)
+
+The `HorarioService` determines if a user can place orders right now:
+
+```csharp Services/HorarioService.cs
+public class HorarioService
+{
+    private readonly AppDbContext _db;
+
+    public HorarioService(AppDbContext db)
+    {
+        _db = db;
+    }
+
+    /// <summary>
+    /// Checks if the user can place orders at the current time.
+    /// Admin, Teacher, and Staff roles have no restrictions.
+    /// </summary>
+    public async Task<HorarioResult> PuedePedirAhoraAsync(int usuarioId)
+    {
+        var usuario = await _db.Usuarios.FindAsync(usuarioId);
+        if (usuario is null)
+            return HorarioResult.Error("Usuario no encontrado.");
+
+        // Admin, Teacher, Staff: no restrictions
+        if (usuario.Rol != RolUsuario.Alumno)
+            return HorarioResult.Permitido("Sin restricción horaria.");
+
+        // Student without assigned shift (shouldn't happen)
+        if (usuario.Turno is null)
+            return HorarioResult.Denegado("Tu cuenta no tiene turno asignado. Contacta con el administrador.");
+
+        var franjas = await _db.FranjasHorarias
+            .Where(f => f.Turno == usuario.Turno && f.Activa)
+            .ToListAsync();
+
+        if (!franjas.Any())
+            return HorarioResult.Denegado("No hay franjas horarias configuradas para tu turno.");
+
+        // Is any time window active right now?
+        var franjaActiva = franjas.FirstOrDefault(f => f.EstaActiva);
+
+        if (franjaActiva is not null)
+        {
+            // Calculate remaining time in the window
+            var fin = TimeOnly.Parse(franjaActiva.HoraFin);
+            var ahora = TimeOnly.FromDateTime(DateTime.Now);
+            var minutosRestantes = (int)(fin - ahora).TotalMinutes;
+
+            return HorarioResult.Permitido(
+                $"Pedidos disponibles hasta las {franjaActiva.HoraFin} ({minutosRestantes} min restantes).",
+                franjaActiva);
+        }
+
+        // No active window → calculate the next one
+        var proxima = ObtenerProximaFranja(franjas);
+        if (proxima is null)
+            return HorarioResult.Denegado("No hay más franjas horarias hoy para tu turno.");
+
+        return HorarioResult.Denegado(
+            $"Pedidos no disponibles ahora. Próxima ventana: {proxima.Descripcion} a las {proxima.HoraInicio}.",
+            proxima);
+    }
+
+    private static FranjaHoraria? ObtenerProximaFranja(IEnumerable<FranjaHoraria> franjas)
+    {
+        var ahora = TimeOnly.FromDateTime(DateTime.Now);
+        return franjas
+            .Where(f => TimeOnly.Parse(f.HoraInicio) > ahora)
+            .OrderBy(f => TimeOnly.Parse(f.HoraInicio))
+            .FirstOrDefault();
+    }
+}
+```
+
+### Validation Flow
+
+<Steps>
+  <Step title="Check user role">
+    If user is Admin, Teacher, or Staff → **always allow** (no time restrictions)
+  </Step>
+  
+  <Step title="Check shift assignment">
+    If student has no shift assigned → **deny** with error message
+  </Step>
+  
+  <Step title="Load active time windows">
+    Query `FranjasHorarias` where `Turno = usuario.Turno` and `Activa = true`
+  </Step>
+  
+  <Step title="Check if any window is active now">
+    Use `EstaActiva` computed property to find active windows
+    
+    - **If found**: Allow ordering, show remaining time
+    - **If not found**: Deny ordering, show next available window
+  </Step>
+</Steps>
+
+### HorarioResult Response
+
+The service returns a structured result:
+
+```csharp Services/HorarioService.cs:82
+public class HorarioResult
+{
+    public bool Puede          { get; init; }  // Can the user order?
+    public string Mensaje      { get; init; }  // User-friendly message
+    public bool EsError        { get; init; }  // Is this an error state?
+    public FranjaHoraria? FranjaActual  { get; init; }  // Current active window (if any)
+    public FranjaHoraria? ProximaFranja { get; init; }  // Next upcoming window (if any)
+
+    public static HorarioResult Permitido(string msg, FranjaHoraria? franja = null)
+        => new() { Puede = true,  Mensaje = msg, FranjaActual  = franja };
+
+    public static HorarioResult Denegado(string msg, FranjaHoraria? proxima = null)
+        => new() { Puede = false, Mensaje = msg, ProximaFranja = proxima };
+
+    public static HorarioResult Error(string msg)
+        => new() { Puede = false, Mensaje = msg, EsError = true };
+}
+```
+
+## Managing Time Schedules (Admin Panel)
+
+Admins can manage time schedules via the API endpoints:
+
+### List All Time Windows
+
+```http
+GET /api/admin/horarios
+Authorization: Bearer {admin_token}
+```
+
+Returns all configured time windows across all shifts.
+
+### Create New Time Window
+
+```http
+POST /api/admin/horarios
+Authorization: Bearer {admin_token}
+Content-Type: application/json
+
+{
+  "turno": 0,                    // 0=Manana, 1=Tarde, 2=Noche
+  "descripcion": "Merienda",
+  "horaInicio": "16:00",
+  "horaFin": "16:20",
+  "activa": true
+}
+```
+
+### Update Time Window
+
+```http
+PUT /api/admin/horarios/{id}
+Authorization: Bearer {admin_token}
+Content-Type: application/json
+
+{
+  "turno": 0,
+  "descripcion": "Recreo extendido",
+  "horaInicio": "11:00",
+  "horaFin": "11:45",           // Extended by 15 minutes
+  "activa": true
+}
+```
+
+### Delete Time Window
+
+```http
+DELETE /api/admin/horarios/{id}
+Authorization: Bearer {admin_token}
+```
+
+<Warning>
+  Deleting a time window removes it permanently from the database. Consider setting `Activa = false` instead to temporarily disable it.
+</Warning>
+
+### Admin Controller Implementation
+
+The admin endpoints are implemented in `AdminController.cs`:
+
+```csharp Controllers/AdminController.cs:116
+// GET /api/admin/horarios
+[HttpGet("horarios")]
+public async Task<ActionResult<List<FranjaHorariaDto>>> GetHorarios()
+{
+    var franjas = await _db.FranjasHorarias
+        .OrderBy(f => f.Turno).ThenBy(f => f.HoraInicio)
+        .ToListAsync();
+    return Ok(franjas.Select(MapFranjaDto).ToList());
+}
+
+// POST /api/admin/horarios
+[HttpPost("horarios")]
+public async Task<ActionResult<FranjaHorariaDto>> CrearFranja([FromBody] UpsertFranjaRequest req)
+{
+    var franja = new FranjaHoraria
+    {
+        Turno       = req.Turno,
+        Descripcion = req.Descripcion,
+        HoraInicio  = req.HoraInicio,
+        HoraFin     = req.HoraFin,
+        Activa      = req.Activa
+    };
+    _db.FranjasHorarias.Add(franja);
+    await _db.SaveChangesAsync();
+    return Ok(MapFranjaDto(franja));
+}
+
+// PUT /api/admin/horarios/{id}
+[HttpPut("horarios/{id}")]
+public async Task<ActionResult<FranjaHorariaDto>> ActualizarFranja(int id, [FromBody] UpsertFranjaRequest req)
+{
+    var franja = await _db.FranjasHorarias.FindAsync(id);
+    if (franja is null) return NotFound();
+
+    franja.Turno       = req.Turno;
+    franja.Descripcion = req.Descripcion;
+    franja.HoraInicio  = req.HoraInicio;
+    franja.HoraFin     = req.HoraFin;
+    franja.Activa      = req.Activa;
+    await _db.SaveChangesAsync();
+    return Ok(MapFranjaDto(franja));
+}
+
+// DELETE /api/admin/horarios/{id}
+[HttpDelete("horarios/{id}")]
+public async Task<ActionResult> EliminarFranja(int id)
+{
+    var franja = await _db.FranjasHorarias.FindAsync(id);
+    if (franja is null) return NotFound();
+    _db.FranjasHorarias.Remove(franja);
+    await _db.SaveChangesAsync();
+    return NoContent();
+}
+```
+
+## Using the Admin Interface
+
+The Blazor admin panel (`CafeIES.Admin`) provides a UI for managing schedules:
+
+<Steps>
+  <Step title="Navigate to Schedule Management">
+    Log in to the admin panel and navigate to **Configuración → Horarios**.
+  </Step>
+  
+  <Step title="View Current Schedules">
+    The interface displays all time windows grouped by shift:
+    
+    - **Mañana** (Morning)
+    - **Tarde** (Afternoon)
+    - **Noche** (Evening)
+    
+    Each entry shows:
+    - Description
+    - Time range (HH:mm - HH:mm)
+    - Active/Inactive status
+    - Edit/Delete buttons
+  </Step>
+  
+  <Step title="Add New Time Window">
+    Click **"+ Nueva Franja"** and fill in:
+    - Select shift (Mañana/Tarde/Noche)
+    - Enter description (e.g., "Lunch break")
+    - Set start time (HH:mm)
+    - Set end time (HH:mm)
+    - Toggle active status
+    
+    Click **"Guardar"** to create.
+  </Step>
+  
+  <Step title="Edit Existing Window">
+    Click the **✏️ Edit** button next to any time window:
+    - Modify any field
+    - Click **"Actualizar"** to save changes
+    
+    <Note>
+      Changes take effect immediately. Students will see updated ordering windows in real-time.
+    </Note>
+  </Step>
+  
+  <Step title="Disable/Enable Windows">
+    Toggle the **Activa** checkbox to temporarily disable a time window without deleting it.
+    
+    **Use cases:**
+    - School holidays
+    - Special events
+    - Maintenance periods
+  </Step>
+  
+  <Step title="Delete Window">
+    Click the **🗑️ Delete** button to permanently remove a time window.
+    
+    <Warning>
+      This action cannot be undone. Consider disabling instead.
+    </Warning>
+  </Step>
+</Steps>
+
+## Example Scenarios
+
+### Scenario 1: Extending Break Time
+
+The morning break is too short. Extend it by 15 minutes:
+
+```json
+PUT /api/admin/horarios/2
+
+{
+  "turno": 0,
+  "descripcion": "Recreo",
+  "horaInicio": "11:00",
+  "horaFin": "11:45",      // Changed from 11:30
+  "activa": true
+}
+```
+
+### Scenario 2: Adding a Lunch Window
+
+Add a new ordering window for afternoon shift students during lunch:
+
+```json
+POST /api/admin/horarios
+
+{
+  "turno": 1,               // Tarde (Afternoon)
+  "descripcion": "Comida",
+  "horaInicio": "15:00",
+  "horaFin": "15:30",
+  "activa": true
+}
+```
+
+### Scenario 3: Disabling Ordering During Exams
+
+Temporarily disable all ordering during exam week:
+
+```http
+# Disable all windows for morning shift
+PUT /api/admin/horarios/1
+{ "activa": false, ... }
+
+PUT /api/admin/horarios/2
+{ "activa": false, ... }
+
+# Repeat for other shifts
+```
+
+After exams, re-enable by setting `"activa": true`.
+
+### Scenario 4: Different Schedules for Holidays
+
+Create special time windows for a school event day:
+
+```json
+POST /api/admin/horarios
+
+{
+  "turno": 0,
+  "descripcion": "Evento especial",
+  "horaInicio": "10:00",
+  "horaFin": "12:00",      // 2-hour window
+  "activa": true
+}
+```
+
+Delete or disable after the event.
+
+## Validation Messages for Students
+
+When students try to order outside allowed windows, they see helpful messages:
+
+### Order Allowed
+
+```json
+{
+  "puede": true,
+  "mensaje": "Pedidos disponibles hasta las 11:30 (25 min restantes).",
+  "franjaActual": {
+    "id": 2,
+    "turno": "Manana",
+    "descripcion": "Recreo",
+    "horaInicio": "11:00",
+    "horaFin": "11:30",
+    "activa": true
+  }
+}
+```
+
+### Order Denied (Next Window Available)
+
+```json
+{
+  "puede": false,
+  "mensaje": "Pedidos no disponibles ahora. Próxima ventana: Recreo a las 11:00.",
+  "proximaFranja": {
+    "id": 2,
+    "turno": "Manana",
+    "descripcion": "Recreo",
+    "horaInicio": "11:00",
+    "horaFin": "11:30",
+    "activa": true
+  }
+}
+```
+
+### Order Denied (No More Windows Today)
+
+```json
+{
+  "puede": false,
+  "mensaje": "No hay más franjas horarias hoy para tu turno."
+}
+```
+
+### Error (No Shift Assigned)
+
+```json
+{
+  "puede": false,
+  "mensaje": "Tu cuenta no tiene turno asignado. Contacta con el administrador.",
+  "esError": true
+}
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Test Changes in Dev First" icon="flask">
+    Test new time windows in a development environment before applying to production.
+  </Card>
+  
+  <Card title="Communicate Changes" icon="megaphone">
+    Notify students when time schedules change via in-app announcements.
+  </Card>
+  
+  <Card title="Buffer Time" icon="clock">
+    End time windows 5-10 minutes before class starts to allow pickup time.
+  </Card>
+  
+  <Card title="Monitor Usage" icon="chart-line">
+    Track order volumes per time window to optimize schedules.
+  </Card>
+</CardGroup>
+
+### Additional Tips
+
+<Accordion title="Avoid overlapping windows">
+  Don't create overlapping time windows for the same shift. While technically allowed, it can confuse students about which window applies.
+</Accordion>
+
+<Accordion title="Use descriptive names">
+  Use clear descriptions like "Morning break" or "Before classes" instead of generic "Window 1", "Window 2".
+</Accordion>
+
+<Accordion title="Consider peak times">
+  Avoid very long windows (> 1 hour) as they can lead to cafeteria congestion. Multiple shorter windows spread demand.
+</Accordion>
+
+<Accordion title="Time zone considerations">
+  The system uses `DateTime.Now` server time. Ensure the server's timezone is set correctly for your school's location.
+</Accordion>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Students can't order during active window">
+    **Check:**
+    - Is the `Activa` flag set to `true`?
+    - Is the student's `Turno` set correctly in their user profile?
+    - Is the server's system time correct?
+    - Are `HoraInicio` and `HoraFin` in HH:mm format (24-hour)?
+    
+    **Debug:**
+    ```csharp
+    // Check current time
+    var ahora = TimeOnly.FromDateTime(DateTime.Now);
+    Console.WriteLine($"Current time: {ahora}");
+    
+    // Check if window is active
+    var franja = await _db.FranjasHorarias.FindAsync(id);
+    Console.WriteLine($"Window active: {franja.EstaActiva}");
+    ```
+  </Accordion>
+
+  <Accordion title="Time window not showing in admin panel">
+    **Check:**
+    - Did you save the changes to the database?
+    - Refresh the admin panel page
+    - Check browser console for API errors
+    - Verify the API endpoint returned 200 OK
+    
+    **Debug:**
+    ```bash
+    # Query database directly
+    SELECT * FROM FranjasHorarias;
+    ```
+  </Accordion>
+
+  <Accordion title="Wrong 'next window' calculation">
+    **Cause**: The `ObtenerProximaFranja` method only considers windows later **today**. It doesn't wrap to tomorrow.
+    
+    **Solution**: This is by design. Students should see "No more windows today" if all windows have passed, encouraging them to plan ahead.
+  </Accordion>
+
+  <Accordion title="Teachers/Staff see time restrictions">
+    **Cause**: User's `Rol` is set to `Alumno` instead of `Profesor` or `Personal`.
+    
+    **Solution**: Admin must change the user's role:
+    ```http
+    PATCH /api/admin/usuarios/{id}/rol
+    { "rol": "Profesor" }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Related Pages
+
+<CardGroup cols={2}>
+  <Card title="Database Configuration" icon="database" href="/configuration/database">
+    Learn about the FranjasHorarias table schema
+  </Card>
+  <Card title="Authentication" icon="key" href="/configuration/authentication">
+    Understand user roles and permissions
+  </Card>
+</CardGroup>

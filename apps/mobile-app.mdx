@@ -1,0 +1,643 @@
+---
+title: 'Mobile App (.NET MAUI)'
+description: 'Cross-platform mobile application for students, teachers, and staff to browse products and place orders'
+icon: 'mobile'
+---
+
+## Overview
+
+The CaféIES mobile app is built with **.NET MAUI** (Multi-platform App UI) and targets **Android, iOS, and Windows**. It provides a beautiful, native experience for browsing the cafeteria menu, adding items to cart, and managing orders.
+
+<CardGroup cols={2}>
+  <Card title="Cross-Platform" icon="mobile-screen">
+    Single codebase runs on Android, iOS, and Windows
+  </Card>
+  <Card title="MVVM Architecture" icon="diagram-project">
+    Clean separation with ViewModels and dependency injection
+  </Card>
+  <Card title="Real-Time Updates" icon="bolt">
+    SignalR integration for live order status updates
+  </Card>
+  <Card title="Secure Storage" icon="lock">
+    JWT tokens stored in platform-specific secure storage
+  </Card>
+</CardGroup>
+
+## Architecture
+
+### Project Structure
+
+The MAUI app follows the **MVVM (Model-View-ViewModel)** pattern with dependency injection:
+
+```
+CafeIES.MAUI/
+├── Views/              # XAML UI pages
+├── ViewModels/         # Business logic and state management
+├── Services/           # API communication and token management
+├── Converters/         # XAML value converters
+├── AppShell.xaml       # Navigation structure
+└── MauiProgram.cs      # DI container configuration
+```
+
+### Dependency Injection Setup
+
+All services, ViewModels, and Pages are registered in the DI container:
+
+```csharp MauiProgram.cs
+public static MauiApp CreateMauiApp()
+{
+    var builder = MauiApp.CreateBuilder();
+
+    builder
+        .UseMauiApp<App>()
+        .UseMauiCommunityToolkit()
+        .ConfigureFonts(fonts =>
+        {
+            fonts.AddFont("Syne-Bold.ttf", "SyneBold");
+            fonts.AddFont("DMSans-Regular.ttf", "DMSans");
+        });
+
+    // HTTP Client with platform-specific base URL
+    #if ANDROID
+    var apiBase = "https://10.0.2.2:50658/";  // Android emulator alias
+    #else
+    var apiBase = "https://localhost:50658/";
+    #endif
+
+    builder.Services.AddHttpClient<ApiService>(client =>
+    {
+        client.BaseAddress = new Uri(apiBase);
+    }).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+    {
+        // Accept dev certificates
+        ServerCertificateCustomValidationCallback = (m, c, ch, e) => true
+    });
+
+    // Services (Singleton for shared state)
+    builder.Services.AddSingleton<TokenService>();
+    builder.Services.AddSingleton<CarritoViewModel>();
+
+    // ViewModels (Transient - new instance per navigation)
+    builder.Services.AddTransient<LoginViewModel>();
+    builder.Services.AddTransient<HomeViewModel>();
+    builder.Services.AddTransient<PedidosViewModel>();
+    // ... more ViewModels
+
+    // Pages
+    builder.Services.AddTransient<LoginPage>();
+    builder.Services.AddTransient<HomePage>();
+    // ... more pages
+
+    return builder.Build();
+}
+```
+
+<Note>
+  The `CarritoViewModel` is registered as **Singleton** to maintain cart state across the entire app lifecycle.
+</Note>
+
+## Navigation Structure
+
+The app uses **Shell navigation** with three main tab bars defined in `AppShell.xaml`:
+
+```xml AppShell.xaml
+<!-- Login (no tab bar) -->
+<ShellContent Route="Login" ContentTemplate="{DataTemplate views:LoginPage}" 
+              Shell.NavBarIsVisible="False"/>
+
+<!-- Admin Panel -->
+<TabBar Route="Admin">
+    <Tab Title="Pedidos" Icon="icon_orders.png" Route="AdminPedidos">
+        <ShellContent ContentTemplate="{DataTemplate views:AdminPedidosPage}"/>
+    </Tab>
+    <Tab Title="Productos" Icon="icon_home.png" Route="AdminProductos">
+        <ShellContent ContentTemplate="{DataTemplate views:AdminProductosPage}"/>
+    </Tab>
+    <Tab Title="Usuarios" Icon="icon_profile.png" Route="AdminUsuarios">
+        <ShellContent ContentTemplate="{DataTemplate views:AdminUsuariosPage}"/>
+    </Tab>
+</TabBar>
+
+<!-- Main App (Students/Teachers/Staff) -->
+<TabBar Route="Main">
+    <Tab Title="Inicio" Icon="icon_home.png" Route="Inicio">
+        <ShellContent ContentTemplate="{DataTemplate views:HomePage}"/>
+    </Tab>
+    <Tab Title="Carrito" Icon="icon_cart.png" Route="Carrito">
+        <ShellContent ContentTemplate="{DataTemplate views:CarritoPage}"/>
+    </Tab>
+    <Tab Title="Pedidos" Icon="icon_orders.png" Route="Pedidos">
+        <ShellContent ContentTemplate="{DataTemplate views:PedidosPage}"/>
+    </Tab>
+    <Tab Title="Perfil" Icon="icon_profile.png" Route="Perfil">
+        <ShellContent ContentTemplate="{DataTemplate views:PerfilPage}"/>
+    </Tab>
+</TabBar>
+```
+
+### Navigation After Login
+
+The `LoginViewModel` automatically routes users based on their role:
+
+```csharp LoginViewModel.cs
+private async Task LoginAsync()
+{
+    var (resultado, pendiente) = await _api.LoginAsync(Email, Password);
+
+    if (resultado is null)
+    {
+        ErrorMessage = pendiente
+            ? "Tu cuenta está pendiente de validación por el administrador."
+            : "Usuario o contraseña incorrectos.";
+        return;
+    }
+
+    // Navigate to appropriate tab bar based on role
+    var destino = resultado.Usuario.Rol == RolUsuario.Admin 
+        ? "//Admin"   // Admin panel
+        : "//Main";   // Student/teacher interface
+    
+    await Shell.Current.GoToAsync(destino);
+}
+```
+
+## Core Services
+
+### ApiService
+
+The `ApiService` handles all HTTP communication with the backend API:
+
+```csharp Services/ApiService.cs
+public class ApiService
+{
+    private readonly HttpClient _http;
+    private readonly TokenService _tokens;
+
+    public string HubUrl => $"{_http.BaseAddress}hubs/cafeteria";
+
+    // Automatically attaches JWT token to requests
+    private async Task AdjuntarTokenAsync()
+    {
+        var token = await _tokens.GetAccessTokenAsync();
+        if (!string.IsNullOrEmpty(token))
+            _http.DefaultRequestHeaders.Authorization =
+                new AuthenticationHeaderValue("Bearer", token);
+    }
+
+    // Authentication
+    public async Task<(LoginResponse? Data, bool CuentaPendiente)> 
+        LoginAsync(string email, string password)
+    {
+        var resp = await _http.PostAsJsonAsync("api/auth/login",
+            new LoginRequest(email, password));
+
+        if (resp.StatusCode == HttpStatusCode.Forbidden)
+            return (null, true);  // Account pending approval
+
+        if (!resp.IsSuccessStatusCode) return (null, false);
+
+        var data = await resp.Content.ReadFromJsonAsync<LoginResponse>();
+        await _tokens.GuardarTokensAsync(data.AccessToken, data.RefreshToken);
+        await _tokens.GuardarUsuarioAsync(data.Usuario);
+        return (data, false);
+    }
+
+    // Products
+    public async Task<List<ProductoDto>> GetProductosAsync()
+    {
+        await AdjuntarTokenAsync();
+        return await _http.GetFromJsonAsync<List<ProductoDto>>("api/productos") 
+            ?? new();
+    }
+
+    // Orders
+    public async Task<PedidoDto?> CrearPedidoAsync(CrearPedidoRequest req)
+    {
+        await AdjuntarTokenAsync();
+        var resp = await _http.PostAsJsonAsync("api/pedidos", req);
+        return resp.IsSuccessStatusCode
+            ? await resp.Content.ReadFromJsonAsync<PedidoDto>()
+            : null;
+    }
+
+    // Admin: Manage products, users, orders...
+    public async Task<List<UsuarioDto>> GetTodosUsuariosAsync() { /*...*/ }
+    public async Task<bool> CambiarEstadoPedidoAsync(int id, EstadoPedido estado) { /*...*/ }
+}
+```
+
+### TokenService
+
+Secure storage for JWT tokens using platform-specific keychains:
+
+```csharp Services/TokenService.cs
+/// <summary>
+/// Manages secure storage of JWT tokens and user data.
+/// Uses SecureStorage (Keychain on iOS, EncryptedSharedPreferences on Android).
+/// </summary>
+public class TokenService
+{
+    private const string AccessTokenKey  = "access_token";
+    private const string RefreshTokenKey = "refresh_token";
+    private const string UserKey         = "user_data";
+
+    public async Task GuardarTokensAsync(string accessToken, string refreshToken)
+    {
+        await SecureStorage.Default.SetAsync(AccessTokenKey,  accessToken);
+        await SecureStorage.Default.SetAsync(RefreshTokenKey, refreshToken);
+    }
+
+    public async Task GuardarUsuarioAsync(UsuarioDto usuario)
+    {
+        var json = JsonSerializer.Serialize(usuario);
+        await SecureStorage.Default.SetAsync(UserKey, json);
+    }
+
+    public async Task<UsuarioDto?> GetUsuarioAsync()
+    {
+        var json = await SecureStorage.Default.GetAsync(UserKey);
+        return string.IsNullOrEmpty(json) 
+            ? null 
+            : JsonSerializer.Deserialize<UsuarioDto>(json);
+    }
+
+    public Task<string?> GetAccessTokenAsync()
+        => SecureStorage.Default.GetAsync(AccessTokenKey);
+
+    public void LimpiarTokens()
+    {
+        SecureStorage.Default.Remove(AccessTokenKey);
+        SecureStorage.Default.Remove(RefreshTokenKey);
+        SecureStorage.Default.Remove(UserKey);
+    }
+}
+```
+
+<Note>
+  **Security**: Tokens are encrypted at rest using iOS Keychain or Android EncryptedSharedPreferences, not plain text storage.
+</Note>
+
+## Key Views and ViewModels
+
+### HomePage: Product Catalog
+
+The home screen displays products with filtering, search, and cart management.
+
+**ViewModel highlights:**
+
+```csharp ViewModels/HomeViewModel.cs
+public partial class HomeViewModel : ObservableObject
+{
+    [RelayCommand]
+    public async Task CargarAsync()
+    {
+        IsLoading = true;
+
+        // Load data in parallel
+        var (horario, categorias, productos) = await (
+            _api.GetHorarioStatusAsync(),
+            _api.GetCategoriasAsync(),
+            _api.GetProductosAsync()
+        ).WhenAll();
+
+        // Check ordering window
+        if (horario is not null)
+        {
+            PuedePedir = horario.PuedePedir;
+            MostrarBannerBloqueo = !horario.PuedePedir;
+            if (!horario.PuedePedir && horario.ProximaHora is not null)
+                ProximaFranja = $"Próxima ventana: {horario.ProximaFranja} a las {horario.ProximaHora}";
+        }
+
+        // Populate collections
+        Categorias.Clear();
+        foreach (var c in categorias) Categorias.Add(c);
+        
+        Productos.Clear();
+        foreach (var p in productos) Productos.Add(p);
+        
+        FiltrarProductos();
+        IsLoading = false;
+    }
+
+    [RelayCommand]
+    private async Task AnadirAlCarritoAsync(ProductoDto producto)
+    {
+        if (!PuedePedir)
+        {
+            await Shell.Current.DisplayAlert(
+                "Pedidos no disponibles",
+                MensajeHorario,
+                "OK");
+            return;
+        }
+        _carrito.AnadirProducto(producto);
+    }
+}
+```
+
+**UI Structure:**
+
+<Steps>
+  <Step title="Header with Cart Badge">
+    Fixed header displaying greeting and cart icon with item count badge
+  </Step>
+  <Step title="Time Restriction Banner">
+    Conditional banner shown when ordering is outside allowed time windows
+  </Step>
+  <Step title="Search Bar">
+    Real-time filtering of products by name
+  </Step>
+  <Step title="Category Filter">
+    Horizontal scrolling chips for filtering by category (Bebidas, Bocadillos, etc.)
+  </Step>
+  <Step title="Product Grid">
+    2-column grid of product cards with image/emoji, price, stock level, and add-to-cart button
+  </Step>
+</Steps>
+
+### CarritoPage: Shopping Cart
+
+Displays selected items with quantity controls and checkout.
+
+```csharp ViewModels/CarritoViewModel.cs
+public partial class CarritoViewModel : ObservableObject
+{
+    public ObservableCollection<ItemCarrito> Items { get; } = new();
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CarritoVacio))]
+    private int _totalItems;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CarritoVacio))]
+    private decimal _total;
+
+    public bool CarritoVacio => TotalItems == 0;
+
+    public void AnadirProducto(ProductoDto producto)
+    {
+        var existente = Items.FirstOrDefault(i => i.ProductoId == producto.Id);
+        if (existente is not null)
+        {
+            existente.Cantidad++;
+        }
+        else
+        {
+            Items.Add(new ItemCarrito
+            {
+                ProductoId = producto.Id,
+                Nombre = producto.Nombre,
+                Precio = producto.Precio,
+                Cantidad = 1
+            });
+        }
+        RecalcularTotal();
+    }
+
+    [RelayCommand]
+    private async Task ConfirmarPedidoAsync()
+    {
+        if (CarritoVacio) return;
+
+        IsLoading = true;
+        var req = new CrearPedidoRequest(
+            MetodoPago.Efectivo,
+            Notas,
+            Items.Select(i => new LineaPedidoRequest(i.ProductoId, i.Cantidad)).ToList()
+        );
+
+        var pedido = await _api.CrearPedidoAsync(req);
+        IsLoading = false;
+
+        if (pedido is not null)
+        {
+            Items.Clear();
+            RecalcularTotal();
+            await Shell.Current.GoToAsync($"//ConfirmacionPedido?numero={pedido.NumeroPedido}");
+        }
+    }
+}
+```
+
+**Cart UI Features:**
+- Empty state with friendly message
+- List of items with emoji icons
+- Inline quantity increment/decrement controls
+- Order summary with subtotal and total
+- Optional notes field for special requests
+- Checkout button with total price
+
+### PedidosPage: Order History
+
+Displays user's recent orders with status badges:
+
+```csharp ViewModels/PedidosViewModel.cs
+[RelayCommand]
+public async Task CargarPedidosAsync()
+{
+    IsLoading = true;
+    var pedidos = await _api.GetMisPedidosAsync();
+    Pedidos.Clear();
+    foreach (var p in pedidos) Pedidos.Add(p);
+    IsLoading = false;
+}
+```
+
+Each order card shows:
+- Order number (e.g., #042)
+- Date and time
+- Status badge (Pendiente, En Preparación, Listo, Entregado)
+- Items ordered with quantities
+- Total price
+- Tap to view full details
+
+### Admin Pages
+
+Admins see a different tab bar with management interfaces:
+
+**AdminPedidosPage** - Live order queue with status controls
+**AdminProductosPage** - Product CRUD, stock management, toggle active/inactive
+**AdminUsuariosPage** - Approve/reject student registrations, suspend users
+
+## Platform-Specific Considerations
+
+### Android
+
+```csharp MauiProgram.cs
+#if ANDROID
+var apiBase = "https://10.0.2.2:50658/";  // 10.0.2.2 = host machine from emulator
+#endif
+```
+
+The Android emulator cannot access `localhost` directly - use `10.0.2.2` to reach the host machine.
+
+### iOS
+
+Requires configuring `Info.plist` to allow local HTTPS connections during development:
+
+```xml Info.plist
+<key>NSAppTransportSecurity</key>
+<dict>
+    <key>NSAllowsLocalNetworking</key>
+    <true/>
+</dict>
+```
+
+### Windows
+
+Direct `localhost` access works without additional configuration.
+
+## Real-Time Updates with SignalR
+
+The app connects to the SignalR hub for live order status updates:
+
+```csharp
+var hubConnection = new HubConnectionBuilder()
+    .WithUrl(apiService.HubUrl, options =>
+    {
+        options.AccessTokenProvider = async () => await apiService.GetTokenAsync();
+    })
+    .Build();
+
+// Listen for order status changes
+hubConnection.On<object>("EstadoPedidoActualizado", (data) =>
+{
+    // Refresh order list
+    MainThread.BeginInvokeOnMainThread(async () =>
+    {
+        await pedidosViewModel.CargarPedidosAsync();
+    });
+});
+
+await hubConnection.StartAsync();
+```
+
+<Note>
+  JWT tokens are passed via query string for SignalR authentication since WebSocket headers don't support Authorization.
+</Note>
+
+## UI Theme and Styling
+
+The app uses a custom dark theme with warm accent colors defined in `AppShell.xaml`:
+
+```xml
+<Color x:Key="BgColor">#0f0e0c</Color>           <!-- Deep black background -->
+<Color x:Key="SurfaceColor">#1a1916</Color>     <!-- Elevated surfaces -->
+<Color x:Key="AccentColor">#f5a623</Color>      <!-- Warm orange accent -->
+<Color x:Key="TextColor">#f2ede6</Color>        <!-- Off-white text -->
+<Color x:Key="GreenColor">#4caf82</Color>       <!-- Success states -->
+<Color x:Key="RedColor">#e05252</Color>         <!-- Error/warnings -->
+```
+
+**Custom Fonts:**
+- **Syne Bold**: Headers and emphasis
+- **DM Sans**: Body text and UI labels
+
+## Building and Running
+
+<Tabs>
+  <Tab title="Visual Studio">
+    1. Open `CafeIES.sln`
+    2. Set `CafeIES.MAUI` as startup project
+    3. Select target platform (Android Emulator, iOS Simulator, Windows Machine)
+    4. Press F5 to build and run
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    # Android
+    dotnet build -t:Run -f net8.0-android
+
+    # iOS (macOS only)
+    dotnet build -t:Run -f net8.0-ios
+
+    # Windows
+    dotnet build -t:Run -f net8.0-windows10.0.19041.0
+    ```
+  </Tab>
+</Tabs>
+
+<Warning>
+  Make sure the API is running at `https://localhost:50658` before launching the mobile app, or you'll see connection errors.
+</Warning>
+
+## Common Workflows
+
+### Adding a New Page
+
+<Steps>
+  <Step title="Create the View">
+    Add a new XAML page in `Views/` folder:
+    ```xml MyNewPage.xaml
+    <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+                 x:Class="CafeIES.MAUI.Views.MyNewPage">
+        <!-- UI here -->
+    </ContentPage>
+    ```
+  </Step>
+  <Step title="Create the ViewModel">
+    Add ViewModel in `ViewModels/` using CommunityToolkit.Mvvm:
+    ```csharp MyNewViewModel.cs
+    public partial class MyNewViewModel : ObservableObject
+    {
+        [ObservableProperty]
+        private string _title = "Hello";
+
+        [RelayCommand]
+        private async Task LoadDataAsync() { /*...*/ }
+    }
+    ```
+  </Step>
+  <Step title="Register in DI">
+    Add to `MauiProgram.cs`:
+    ```csharp
+    builder.Services.AddTransient<MyNewViewModel>();
+    builder.Services.AddTransient<MyNewPage>();
+    ```
+  </Step>
+  <Step title="Add Navigation Route">
+    Register route in `AppShell.xaml.cs`:
+    ```csharp
+    Routing.RegisterRoute("mynewpage", typeof(MyNewPage));
+    ```
+    
+    Navigate from code:
+    ```csharp
+    await Shell.Current.GoToAsync("mynewpage");
+    ```
+  </Step>
+</Steps>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="App crashes on startup">
+    Check that all services and pages are registered in `MauiProgram.cs`. Missing registrations cause DI to fail at navigation time.
+  </Accordion>
+  <Accordion title="Cannot connect to API from Android emulator">
+    Ensure you're using `https://10.0.2.2:50658/` instead of `localhost` in the Android-specific configuration.
+  </Accordion>
+  <Accordion title="SecureStorage errors on iOS">
+    The iOS simulator requires an unlocked device to access Keychain. Make sure the simulator isn't locked.
+  </Accordion>
+  <Accordion title="XAML Hot Reload not working">
+    Restart the app. Hot Reload sometimes stops working after major UI changes. Full rebuild usually fixes it.
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Admin Panel" icon="globe" href="/apps/admin-panel">
+    Learn about the Blazor admin interface
+  </Card>
+  <Card title="API Reference" icon="server" href="/apps/api">
+    Explore the backend API endpoints
+  </Card>
+  <Card title="Authentication" icon="key" href="/configuration/authentication">
+    Deep dive into JWT authentication
+  </Card>
+  <Card title="Real-Time" icon="bolt" href="/features/real-time-updates">
+    SignalR integration details
+  </Card>
+</CardGroup>

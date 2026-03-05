@@ -1,0 +1,162 @@
+---
+title: 'Update Product'
+api: 'PUT /api/productos/{id}'
+---
+
+Update an existing product in the cafeteria catalog. This endpoint is restricted to administrators only.
+
+## Authentication
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token with Admin role required.
+</ParamField>
+
+**Required Role:** Admin
+
+## Path Parameters
+
+<ParamField path="id" type="integer" required>
+  The unique identifier of the product to update
+</ParamField>
+
+## Request Body
+
+<ParamField body="nombre" type="string" required>
+  Product name (max 120 characters)
+</ParamField>
+
+<ParamField body="descripcion" type="string">
+  Product description (max 300 characters)
+</ParamField>
+
+<ParamField body="precio" type="decimal" required>
+  Product price in euros (format: decimal(6,2))
+</ParamField>
+
+<ParamField body="stock" type="integer">
+  Stock quantity. Use `-1` for unlimited/no stock control.
+</ParamField>
+
+<ParamField body="categoriaId" type="integer" required>
+  ID of the category this product belongs to. Must be a valid existing category.
+</ParamField>
+
+<ParamField body="imagenUrl" type="string" nullable>
+  URL or path to the product image (max 500 characters)
+</ParamField>
+
+## Response
+
+<ResponseField name="id" type="integer">
+  Product ID (unchanged)
+</ResponseField>
+
+<ResponseField name="nombre" type="string">
+  Updated product name
+</ResponseField>
+
+<ResponseField name="descripcion" type="string">
+  Updated product description
+</ResponseField>
+
+<ResponseField name="precio" type="decimal">
+  Updated product price
+</ResponseField>
+
+<ResponseField name="stock" type="integer">
+  Updated stock quantity
+</ResponseField>
+
+<ResponseField name="imagenUrl" type="string" nullable>
+  Updated product image URL
+</ResponseField>
+
+<ResponseField name="activo" type="boolean">
+  Product active status (unchanged by this endpoint)
+</ResponseField>
+
+<ResponseField name="nivelStock" type="string">
+  Stock level indicator based on updated stock
+</ResponseField>
+
+<ResponseField name="categoriaId" type="integer">
+  Updated category ID
+</ResponseField>
+
+<ResponseField name="categoriaNombre" type="string">
+  Updated category name
+</ResponseField>
+
+<ResponseField name="categoriaEmoji" type="string">
+  Updated category emoji
+</ResponseField>
+
+## Example Request
+
+```bash
+curl -X PUT "https://api.cafeies.com/api/productos/15" \
+  -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "nombre": "Café con Leche Grande",
+    "descripcion": "Café con leche en vaso grande (300ml)",
+    "precio": 1.80,
+    "stock": -1,
+    "categoriaId": 2,
+    "imagenUrl": "/images/productos/cafe-leche-grande.jpg"
+  }'
+```
+
+## Example Response
+
+```json
+{
+  "id": 15,
+  "nombre": "Café con Leche Grande",
+  "descripcion": "Café con leche en vaso grande (300ml)",
+  "precio": 1.80,
+  "stock": -1,
+  "imagenUrl": "/images/productos/cafe-leche-grande.jpg",
+  "activo": true,
+  "nivelStock": "ok",
+  "categoriaId": 2,
+  "categoriaNombre": "Bebidas",
+  "categoriaEmoji": "☕"
+}
+```
+
+## Response Codes
+
+<ResponseField name="200" type="OK">
+  Product updated successfully
+</ResponseField>
+
+<ResponseField name="400" type="Bad Request">
+  Invalid request body or invalid category ID
+  
+  ```json
+  {
+    "mensaje": "Categoría no válida."
+  }
+  ```
+</ResponseField>
+
+<ResponseField name="401" type="Unauthorized">
+  Missing or invalid authentication token
+</ResponseField>
+
+<ResponseField name="403" type="Forbidden">
+  User does not have Admin role
+</ResponseField>
+
+<ResponseField name="404" type="Not Found">
+  Product with the specified ID does not exist
+</ResponseField>
+
+## Notes
+
+- This endpoint updates all product fields except `activo` and `id`
+- To change the active status, use the [Toggle Active](/api/products/toggle-active) endpoint
+- The `categoriaId` must reference an existing category in the database
+- Price changes only affect future orders; existing orders maintain their historical prices
+- Stock value of `-1` indicates unlimited stock (no stock control)

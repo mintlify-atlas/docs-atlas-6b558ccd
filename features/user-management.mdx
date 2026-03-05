@@ -1,0 +1,436 @@
+---
+title: User Management
+description: Comprehensive user system with role-based access and validation workflows
+icon: users
+---
+
+## Overview
+
+CaféIES implements a sophisticated user management system with four distinct roles, dual registration flows, and an admin validation workflow for student accounts.
+
+## User Roles
+
+The system supports four user roles, each with specific permissions and access patterns:
+
+```csharp CafeIES.Shared/Models/Enums.cs
+public enum RolUsuario
+{
+    Alumno      = 0,   // Se registra solo, requiere validación del admin
+    Profesor    = 1,   // Se registra mediante enlace/QR generado por el admin
+    Personal    = 2,   // Se registra mediante enlace/QR generado por el admin
+    Admin       = 99   // Creado directamente, acceso total
+}
+```
+
+<CardGroup cols={2}>
+  <Card title="Alumno (Student)" icon="graduation-cap">
+    - Self-registration allowed
+    - Subject to schedule restrictions
+    - Requires admin validation
+    - Must select a shift (Mañana/Tarde/Noche)
+  </Card>
+  
+  <Card title="Profesor (Teacher)" icon="chalkboard-user">
+    - Invitation-only registration
+    - No schedule restrictions
+    - Instant account activation
+    - Can order anytime
+  </Card>
+  
+  <Card title="Personal (Staff)" icon="user-tie">
+    - Invitation-only registration
+    - Full cafeteria management access
+    - Can manage orders and view dashboard
+    - No schedule restrictions
+  </Card>
+  
+  <Card title="Admin" icon="crown">
+    - Seeded on first launch
+    - Full system access
+    - User validation and management
+    - Configuration control
+  </Card>
+</CardGroup>
+
+## User Entity Model
+
+The `Usuario` entity contains all user information and authentication data:
+
+```csharp CafeIES.Shared/Models/Entities.cs
+public class Usuario
+{
+    public int Id { get; set; }
+
+    [Required, MaxLength(100)]
+    public string NombreCompleto { get; set; } = string.Empty;
+
+    [Required, MaxLength(150), EmailAddress]
+    public string Email { get; set; } = string.Empty;
+
+    /// <summary>Hash bcrypt de la contraseña. Nunca almacenar en texto plano.</summary>
+    [Required]
+    public string PasswordHash { get; set; } = string.Empty;
+
+    public RolUsuario Rol { get; set; } = RolUsuario.Alumno;
+
+    public Turno? Turno { get; set; }  // Null para Admin (sin restricción horaria)
+
+    public EstadoCuenta Estado { get; set; } = EstadoCuenta.PendienteValidacion;
+
+    public DateTime FechaRegistro { get; set; } = DateTime.UtcNow;
+
+    public DateTime? FechaValidacion { get; set; }
+
+    /// <summary>Token de refresco JWT activo.</summary>
+    public string? RefreshToken { get; set; }
+    public DateTime? RefreshTokenExpiry { get; set; }
+
+    // Navegación
+    public ICollection<Pedido> Pedidos { get; set; } = new List<Pedido>();
+}
+```
+
+## Account States
+
+Every user account progresses through different states:
+
+```csharp CafeIES.Shared/Models/Enums.cs
+public enum EstadoCuenta
+{
+    PendienteValidacion = 0,  // Alumno recién registrado, esperando aprobación
+    Activa              = 1,  // Cuenta operativa
+    Suspendida          = 2,  // Bloqueada por el admin
+    Rechazada           = 3   // El admin rechazó el registro
+}
+```
+
+<Steps>
+  <Step title="Student registers">
+    Account is created with `EstadoCuenta.PendienteValidacion`
+  </Step>
+  
+  <Step title="Admin reviews">
+    Admin sees pending students in the dashboard and can approve or reject
+  </Step>
+  
+  <Step title="Validation outcome">
+    - **Approved**: Estado → `Activa`, user can login
+    - **Rejected**: Estado → `Rechazada`, login blocked
+  </Step>
+</Steps>
+
+## Registration Flows
+
+### Student Self-Registration
+
+Students can register directly through the mobile app. Their accounts require admin validation:
+
+```csharp CafeIES.API/Controllers/AuthController.cs
+[HttpPost("registro/alumno")]
+public async Task<ActionResult> RegistroAlumno([FromBody] RegistroAlumnoRequest req)
+{
+    if (await _db.Usuarios.AnyAsync(u => u.Email == req.Email.ToLower()))
+        return Conflict(new { mensaje = "Ya existe una cuenta con ese email." });
+
+    var usuario = new Usuario
+    {
+        NombreCompleto = req.NombreCompleto,
+        Email          = req.Email.ToLower(),
+        PasswordHash   = _auth.HashPassword(req.Password),
+        Rol            = RolUsuario.Alumno,
+        Turno          = req.Turno,
+        Estado         = EstadoCuenta.PendienteValidacion
+    };
+
+    _db.Usuarios.Add(usuario);
+    await _db.SaveChangesAsync();
+
+    return Ok(new { mensaje = "Registro completado. Tu cuenta está pendiente de validación por el administrador." });
+}
+```
+
+**Request DTO:**
+
+```csharp CafeIES.Shared/Models/DTOs.cs
+public record RegistroAlumnoRequest(
+    [Required, MaxLength(100)] string NombreCompleto,
+    [Required, EmailAddress]   string Email,
+    [Required, MinLength(8)]   string Password,
+    [Required]                 Turno  Turno
+);
+```
+
+<Note>
+Student accounts start in `PendienteValidacion` state and cannot login until approved by an admin.
+</Note>
+
+### Invitation-Based Registration
+
+Teachers and staff members register using invitation tokens generated by admins:
+
+```csharp CafeIES.API/Controllers/AuthController.cs
+[HttpPost("registro/invitacion")]
+public async Task<ActionResult<LoginResponse>> RegistroInvitado([FromBody] RegistroInvitadoRequest req)
+{
+    // Validar token de invitación
+    var invitacion = await _db.Invitaciones
+        .FirstOrDefaultAsync(i => i.Token == req.TokenInvitacion);
+
+    if (invitacion is null || !invitacion.EsValida)
+        return BadRequest(new { mensaje = "El enlace de invitación no es válido o ha expirado." });
+
+    if (await _db.Usuarios.AnyAsync(u => u.Email == req.Email.ToLower()))
+        return Conflict(new { mensaje = "Ya existe una cuenta con ese email." });
+
+    // Asignar rol según tipo de invitación
+    var rol = invitacion.Tipo == TipoInvitacion.Profesor
+        ? RolUsuario.Profesor
+        : RolUsuario.Personal;
+
+    var usuario = new Usuario
+    {
+        NombreCompleto  = req.NombreCompleto,
+        Email           = req.Email.ToLower(),
+        PasswordHash    = _auth.HashPassword(req.Password),
+        Rol             = rol,
+        Turno           = null,  // Sin restricción horaria
+        Estado          = EstadoCuenta.Activa,
+        FechaValidacion = DateTime.UtcNow
+    };
+
+    _db.Usuarios.Add(usuario);
+
+    // Incrementar usos de la invitación
+    invitacion.UsosActuales++;
+    if (invitacion.UsosMaximos.HasValue && invitacion.UsosActuales >= invitacion.UsosMaximos)
+        invitacion.Activa = false;
+
+    await _db.SaveChangesAsync();
+
+    // Login automático
+    var accessToken  = _auth.GenerarAccessToken(usuario);
+    var refreshToken = _auth.GenerarRefreshToken();
+    usuario.RefreshToken       = refreshToken;
+    usuario.RefreshTokenExpiry = DateTime.UtcNow.AddDays(30);
+    await _db.SaveChangesAsync();
+
+    return Ok(new LoginResponse(accessToken, refreshToken, MapUsuarioDto(usuario)));
+}
+```
+
+<Accordion title="Invitation Entity Details">
+```csharp CafeIES.Shared/Models/Entities.cs
+public class Invitacion
+{
+    public int Id { get; set; }
+
+    /// <summary>Token único UUID que va en el enlace/QR.</summary>
+    [Required]
+    public string Token { get; set; } = Guid.NewGuid().ToString("N");
+
+    public TipoInvitacion Tipo { get; set; }
+
+    public bool Activa { get; set; } = true;
+
+    public DateTime FechaCreacion { get; set; } = DateTime.UtcNow;
+
+    public DateTime FechaExpiracion { get; set; } = DateTime.UtcNow.AddDays(7);
+
+    /// <summary>Cuántas veces se puede usar. Null = ilimitado mientras esté activa.</summary>
+    public int? UsosMaximos { get; set; }
+
+    public int UsosActuales { get; set; } = 0;
+
+    [NotMapped]
+    public bool EsValida => Activa
+                         && DateTime.UtcNow <= FechaExpiracion
+                         && (UsosMaximos == null || UsosActuales < UsosMaximos);
+}
+```
+</Accordion>
+
+## Authentication & Login
+
+The login endpoint validates credentials and account state:
+
+```csharp CafeIES.API/Controllers/AuthController.cs
+[HttpPost("login")]
+public async Task<ActionResult<LoginResponse>> Login([FromBody] LoginRequest req)
+{
+    var usuario = await _db.Usuarios
+        .FirstOrDefaultAsync(u => u.Email == req.Email.ToLower());
+
+    if (usuario is null || !_auth.VerificarPassword(req.Password, usuario.PasswordHash))
+        return Unauthorized(new { mensaje = "Credenciales incorrectas." });
+
+    if (usuario.Estado == EstadoCuenta.PendienteValidacion)
+        return Forbid(); // 403 → la app mostrará "pendiente de validación"
+
+    if (usuario.Estado == EstadoCuenta.Suspendida || usuario.Estado == EstadoCuenta.Rechazada)
+        return Forbid();
+
+    var accessToken  = _auth.GenerarAccessToken(usuario);
+    var refreshToken = _auth.GenerarRefreshToken();
+
+    usuario.RefreshToken       = refreshToken;
+    usuario.RefreshTokenExpiry = DateTime.UtcNow.AddDays(30);
+    await _db.SaveChangesAsync();
+
+    return Ok(new LoginResponse(
+        accessToken,
+        refreshToken,
+        MapUsuarioDto(usuario)));
+}
+```
+
+### JWT Token Generation
+
+The system uses JWT tokens with user claims:
+
+```csharp CafeIES.API/Services/AuthService.cs
+public string GenerarAccessToken(Usuario usuario)
+{
+    var key = new SymmetricSecurityKey(
+        Encoding.UTF8.GetBytes(_config["Jwt:Key"]!));
+
+    var claims = new[]
+    {
+        new Claim(ClaimTypes.NameIdentifier, usuario.Id.ToString()),
+        new Claim(ClaimTypes.Email,          usuario.Email),
+        new Claim(ClaimTypes.Name,           usuario.NombreCompleto),
+        new Claim(ClaimTypes.Role,           usuario.Rol.ToString()),
+        new Claim("turno",                   usuario.Turno?.ToString() ?? ""),
+        new Claim("estado",                  usuario.Estado.ToString())
+    };
+
+    var token = new JwtSecurityToken(
+        issuer:   _config["Jwt:Issuer"],
+        audience: _config["Jwt:Audience"],
+        claims:   claims,
+        expires:  DateTime.UtcNow.AddHours(1),
+        signingCredentials: new SigningCredentials(key, SecurityAlgorithms.HmacSha256)
+    );
+
+    return new JwtSecurityTokenHandler().WriteToken(token);
+}
+```
+
+<Note>
+Passwords are hashed using bcrypt with a work factor of 12, ensuring secure storage.
+</Note>
+
+## Admin Validation Workflow
+
+Admins can validate, reject, suspend, and reactivate user accounts:
+
+### Validate Student Account
+
+```csharp CafeIES.API/Controllers/AdminController.cs
+[HttpPatch("usuarios/{id}/validar")]
+public async Task<ActionResult> ValidarAlumno(int id, [FromQuery] bool aprobar)
+{
+    var user = await _db.Usuarios.FindAsync(id);
+    if (user is null) return NotFound();
+
+    user.Estado          = aprobar ? EstadoCuenta.Activa : EstadoCuenta.Rechazada;
+    user.FechaValidacion = DateTime.UtcNow;
+    await _db.SaveChangesAsync();
+
+    return Ok(new { mensaje = aprobar ? "Cuenta aprobada." : "Cuenta rechazada." });
+}
+```
+
+### Suspend User
+
+```csharp CafeIES.API/Controllers/AdminController.cs
+[HttpPatch("usuarios/{id}/suspender")]
+public async Task<ActionResult> Suspender(int id)
+{
+    var user = await _db.Usuarios.FindAsync(id);
+    if (user is null) return NotFound();
+    if (user.Rol == RolUsuario.Admin) 
+        return BadRequest(new { mensaje = "No se puede suspender al admin." });
+
+    user.Estado = EstadoCuenta.Suspendida;
+    await _db.SaveChangesAsync();
+    return NoContent();
+}
+```
+
+### Reactivate User
+
+```csharp CafeIES.API/Controllers/AdminController.cs
+[HttpPatch("usuarios/{id}/reactivar")]
+public async Task<ActionResult> Reactivar(int id)
+{
+    var user = await _db.Usuarios.FindAsync(id);
+    if (user is null) return NotFound();
+    if (user.Estado != EstadoCuenta.Suspendida && user.Estado != EstadoCuenta.Rechazada)
+        return BadRequest(new { mensaje = "La cuenta no está suspendida ni rechazada." });
+
+    user.Estado = EstadoCuenta.Activa;
+    await _db.SaveChangesAsync();
+    return NoContent();
+}
+```
+
+## Initial Admin Setup
+
+The system automatically creates an admin account on first launch:
+
+```csharp CafeIES.API/Data/DbSeeder.cs
+public static async Task SeedAdminAsync(AppDbContext db, IConfiguration config)
+{
+    // Si ya hay algún admin, no hacemos nada
+    if (db.Usuarios.Any(u => u.Rol == RolUsuario.Admin)) return;
+
+    var adminEmail    = config["Admin:Email"]    ?? "admin@cafeies.local";
+    var adminPassword = config["Admin:Password"] ?? "Admin1234!";
+    var adminNombre   = config["Admin:Nombre"]   ?? "Administrador";
+
+    var admin = new Usuario
+    {
+        NombreCompleto = adminNombre,
+        Email          = adminEmail,
+        PasswordHash   = BCrypt.Net.BCrypt.HashPassword(adminPassword),
+        Rol            = RolUsuario.Admin,
+        Turno          = null,  // Sin restricción horaria
+        Estado         = EstadoCuenta.Activa,
+        FechaRegistro  = DateTime.UtcNow,
+        FechaValidacion = DateTime.UtcNow
+    };
+
+    db.Usuarios.Add(admin);
+    await db.SaveChangesAsync();
+}
+```
+
+<Warning>
+Change the default admin password immediately after first login in production environments.
+</Warning>
+
+## API Endpoints Summary
+
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/api/auth/login` | POST | None | Authenticate user and return JWT tokens |
+| `/api/auth/registro/alumno` | POST | None | Student self-registration |
+| `/api/auth/registro/invitacion` | POST | None | Teacher/staff registration via invitation |
+| `/api/auth/refresh` | POST | None | Refresh expired access token |
+| `/api/admin/usuarios` | GET | Admin | List all users (with filters) |
+| `/api/admin/usuarios/{id}/validar` | PATCH | Admin | Approve or reject student account |
+| `/api/admin/usuarios/{id}/suspender` | PATCH | Admin | Suspend user account |
+| `/api/admin/usuarios/{id}/reactivar` | PATCH | Admin | Reactivate suspended account |
+| `/api/admin/usuarios/{id}/turno` | PATCH | Admin | Change user's shift |
+
+## Related Features
+
+<CardGroup cols={2}>
+  <Card title="Schedule Restrictions" icon="clock" href="/features/schedule-restrictions">
+    Learn how shifts and time windows restrict student ordering
+  </Card>
+  
+  <Card title="Order Management" icon="receipt" href="/features/order-management">
+    Explore the complete order lifecycle
+  </Card>
+</CardGroup>

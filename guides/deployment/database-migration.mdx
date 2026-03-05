@@ -1,0 +1,387 @@
+---
+title: 'Database Migration'
+description: 'Initialize and manage the CaféIES database with Entity Framework Core'
+icon: 'database'
+---
+
+## Overview
+
+CaféIES uses **Entity Framework Core 9.0** with SQL Server for data persistence. The database schema is managed through code-first migrations.
+
+**Key components:**
+- `AppDbContext.cs` - Entity Framework context with all entity configurations
+- `DbSeeder.cs` - Automatic seeding of initial admin account
+- Migrations folder - Version-controlled schema changes
+
+## Prerequisites
+
+<Steps>
+  <Step title="Install EF Core CLI tools">
+    Install the global Entity Framework Core tools:
+    
+    ```bash
+    dotnet tool install --global dotnet-ef
+    ```
+    
+    Verify installation:
+    ```bash
+    dotnet ef --version
+    ```
+    
+    Should output: `Entity Framework Core .NET Command-line Tools 9.0.x`
+  </Step>
+  
+  <Step title="Configure connection string">
+    Ensure your `appsettings.json` has a valid connection string (see [API Setup](/guides/deployment/api-setup)).
+  </Step>
+  
+  <Step title="Verify SQL Server is running">
+    Test database connectivity before proceeding.
+  </Step>
+</Steps>
+
+## Initial Migration
+
+If this is a fresh deployment and no migrations exist:
+
+<Steps>
+  <Step title="Navigate to the API project">
+    ```bash
+    cd CafeIES.API
+    ```
+  </Step>
+  
+  <Step title="Create the initial migration">
+    ```bash
+    dotnet ef migrations add InitialCreate
+    ```
+    
+    This generates migration files in the `Migrations/` folder:
+    - `{timestamp}_InitialCreate.cs` - Migration code
+    - `{timestamp}_InitialCreate.Designer.cs` - Migration metadata
+    - `AppDbContextModelSnapshot.cs` - Current model snapshot
+  </Step>
+  
+  <Step title="Review the migration">
+    Open the generated migration file to see what will be created:
+    - Tables for all entities (Usuario, Producto, Pedido, etc.)
+    - Indexes and foreign key constraints
+    - Seed data for categories and time slots
+  </Step>
+  
+  <Step title="Apply the migration">
+    ```bash
+    dotnet ef database update
+    ```
+    
+    This will:
+    1. Create the `CafeIES` database if it doesn't exist
+    2. Apply all pending migrations
+    3. Seed initial data (categories, time slots)
+  </Step>
+</Steps>
+
+<Note>
+  The project already includes an `InitialCreate` migration from development. You may need to remove it first if your database schema differs.
+</Note>
+
+## Automatic Migration on Startup
+
+The API automatically applies migrations when it starts (see `Program.cs:92-109`).
+
+```csharp
+using (var scope = app.Services.CreateScope())
+{
+    var db     = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    var config = scope.ServiceProvider.GetRequiredService<IConfiguration>();
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+
+    try
+    {
+        await db.Database.MigrateAsync();          // Apply migrations
+        await DbSeeder.SeedAdminAsync(db, config); // Seed admin
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "⚠️ No se pudo conectar a la BD al arrancar.");
+    }
+}
+```
+
+**Behavior:**
+- Checks for pending migrations on every startup
+- Automatically applies them without manual intervention
+- Seeds the admin account if no admin exists
+- Gracefully handles connection errors (logs warning, continues startup)
+
+<Warning>
+  **Production consideration:** Automatic migrations on startup can cause downtime during schema changes. For production, apply migrations manually or as part of a deployment pipeline.
+</Warning>
+
+## Seeded Data
+
+### Default Admin Account
+
+The `DbSeeder` class creates the initial administrator account.
+
+**Default credentials (from `appsettings.json`):**
+- **Email:** `admin@cafeies.local`
+- **Password:** `Admin1234!`
+- **Role:** Admin
+- **Estado:** Activa (active)
+
+```csharp
+var admin = new Usuario
+{
+    NombreCompleto = adminNombre,
+    Email          = adminEmail,
+    PasswordHash   = BCrypt.Net.BCrypt.HashPassword(adminPassword),
+    Rol            = RolUsuario.Admin,
+    Turno          = null,  // No time restrictions
+    Estado         = EstadoCuenta.Activa,
+    FechaRegistro  = DateTime.UtcNow,
+    FechaValidacion = DateTime.UtcNow
+};
+```
+
+<Note>
+  The seeder only creates the admin if no admin exists. It won't overwrite existing accounts.
+</Note>
+
+### Categories and Time Slots
+
+The `AppDbContext.OnModelCreating` method seeds initial data:
+
+**Categories (Categorías):**
+- Bebidas Calientes (Hot Beverages)
+- Bebidas Frías (Cold Beverages)  
+- Bocadillos (Sandwiches)
+- Dulces (Sweets)
+- Snacks
+
+**Time Slots (Franjas Horarias):**
+
+| Shift (Turno) | Slot 1 | Slot 2 |
+|---------------|--------|--------|
+| Mañana (Morning) | 07:30 - 08:00 | 11:00 - 11:30 |
+| Tarde (Afternoon) | 13:45 - 14:00 | 17:00 - 17:30 |
+| Noche (Evening) | 20:45 - 21:00 | 23:00 - 23:20 |
+
+<Note>
+  Admins, teachers, and staff have no time restrictions. Only students (`Alumno` role) are restricted to their assigned shift times.
+</Note>
+
+## Managing Migrations
+
+### Creating a New Migration
+
+When you modify entity models, create a migration to update the database:
+
+```bash
+cd CafeIES.API
+dotnet ef migrations add <MigrationName>
+```
+
+**Example migration names:**
+- `AddProductImageField`
+- `UpdateOrderStatusEnum`
+- `AddUserPhoneNumber`
+
+<Steps>
+  <Step title="Modify your entity models">
+    Make changes to classes in `CafeIES.Shared/Models/Entities.cs`
+  </Step>
+  
+  <Step title="Create the migration">
+    ```bash
+    dotnet ef migrations add AddProductImageField
+    ```
+  </Step>
+  
+  <Step title="Review the generated migration">
+    Check the migration file in `Migrations/` to ensure it matches your intent.
+  </Step>
+  
+  <Step title="Apply the migration">
+    ```bash
+    dotnet ef database update
+    ```
+    
+    Or simply restart the API (automatic migration on startup).
+  </Step>
+</Steps>
+
+### Reverting a Migration
+
+To undo the last migration:
+
+```bash
+# Remove migration files but keep database unchanged
+dotnet ef migrations remove
+
+# Revert database to a previous migration
+dotnet ef database update <PreviousMigrationName>
+```
+
+<Warning>
+  Reverting migrations can cause data loss. Always backup your database before reverting in production.
+</Warning>
+
+### Listing Migrations
+
+View all migrations and their status:
+
+```bash
+dotnet ef migrations list
+```
+
+Output shows:
+- Applied migrations (marked with a checkmark)
+- Pending migrations (not yet applied)
+
+### Generating SQL Scripts
+
+For production deployments, generate SQL scripts instead of applying migrations directly:
+
+```bash
+# Generate script for all migrations
+dotnet ef migrations script -o migration.sql
+
+# Generate script from a specific migration to current
+dotnet ef migrations script InitialCreate -o migration.sql
+
+# Generate script between two migrations
+dotnet ef migrations script FromMigration ToMigration -o migration.sql
+```
+
+Then apply the script using your DBA's preferred method.
+
+## Connection String Reference
+
+### Development (LocalDB)
+```json
+"ConnectionStrings": {
+  "DefaultConnection": "Server=(localdb)\\MSSQLLocalDB;Database=CafeIES;Trusted_Connection=True;TrustServerCertificate=True;"
+}
+```
+
+### Development (SQL Express)
+```json
+"ConnectionStrings": {
+  "DefaultConnection": "Server=localhost\\SQLEXPRESS;Database=CafeIES;Trusted_Connection=True;TrustServerCertificate=True;"
+}
+```
+
+### Production (SQL Server)
+```json
+"ConnectionStrings": {
+  "DefaultConnection": "Server=your-server;Database=CafeIES;User Id=sa;Password=YourPassword;TrustServerCertificate=True;"
+}
+```
+
+### Production (Azure SQL)
+```json
+"ConnectionStrings": {
+  "DefaultConnection": "Server=tcp:yourserver.database.windows.net,1433;Database=CafeIES;User Id=adminuser;Password=YourPassword;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;"
+}
+```
+
+<Note>
+  For production, use environment variables or Azure Key Vault to store connection strings securely:
+  
+  ```bash
+  export ConnectionStrings__DefaultConnection="Server=..."
+  ```
+</Note>
+
+## Verifying Database
+
+### Using SQL Server Management Studio (SSMS)
+
+1. Connect to your SQL Server instance
+2. Expand **Databases** → **CafeIES**
+3. Verify tables exist:
+   - `Usuarios`
+   - `Productos`
+   - `Categorias`
+   - `Pedidos`
+   - `LineaPedidos`
+   - `FranjasHorarias`
+   - `Invitaciones`
+   - `__EFMigrationsHistory`
+
+### Using dotnet ef
+
+```bash
+# View current database schema
+dotnet ef dbcontext info
+
+# Generate SQL script for current model
+dotnet ef dbcontext script
+```
+
+### Check seeded data
+
+```sql
+-- Verify admin account
+SELECT * FROM Usuarios WHERE Rol = 3; -- Admin = 3
+
+-- Verify categories
+SELECT * FROM Categorias;
+
+-- Verify time slots
+SELECT * FROM FranjasHorarias;
+
+-- Check migrations history
+SELECT * FROM __EFMigrationsHistory ORDER BY MigrationId;
+```
+
+## Troubleshooting
+
+### Login failed for user
+
+**Error:** `Login failed for user 'NT AUTHORITY\SYSTEM'`
+
+**Solution:** Use `TrustServerCertificate=True` in your connection string or configure SQL Server to accept Windows Authentication.
+
+### Database does not exist
+
+**Error:** `Cannot open database "CafeIES" requested by the login`
+
+**Solution:** The database will be created automatically on first migration. Ensure SQL Server is running and you have permissions to create databases.
+
+### Migration already applied
+
+**Error:** `The migration '20260301182259_InitialCreate' has already been applied to the database`
+
+**Solution:** The migration is already applied. If you need to make changes, create a new migration or revert this one first.
+
+### Build failed before migration
+
+**Error:** `Build failed. Use dotnet build to see the errors.`
+
+**Solution:** Fix compilation errors before running migrations:
+```bash
+dotnet build CafeIES.API
+```
+
+### Connection timeout
+
+**Error:** `Timeout expired. The timeout period elapsed prior to completion of the operation`
+
+**Solution:** 
+1. Increase connection timeout in connection string: `Connection Timeout=60;`
+2. Check network connectivity to SQL Server
+3. Verify SQL Server is not under heavy load
+
+## Next Steps
+
+With the database initialized:
+
+1. [Configure the mobile app](/guides/deployment/mobile-deployment) to connect to the API
+2. [Learn about the Blazor Admin panel](/apps/admin-panel) for management
+3. Start adding products and managing users through the admin interface
+
+<Note>
+  Remember to backup your database regularly in production. Use SQL Server's built-in backup tools or Azure SQL automatic backups.
+</Note>

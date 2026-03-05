@@ -1,0 +1,273 @@
+---
+title: Generating Invitations
+description: Create QR code invitations for teachers and staff to register with the correct role
+---
+
+Invitation links allow teachers and staff to register for CaféIES with the appropriate role automatically assigned. Each invitation generates a unique URL and QR code that can be shared via email, printed, or displayed.
+
+## Understanding Invitation Types
+
+CaféIES supports two invitation types:
+
+### 👨‍🏫 Teachers (Profesores)
+
+- Registers users with the **Profesor** role
+- Grants unrestricted ordering access (no shift limitations)
+- Can place orders at any time during any active time window
+- Suitable for teaching staff at the school
+
+### 🏢 Staff (Personal)
+
+- Registers users with the **Personal** role
+- Grants unrestricted ordering access (no shift limitations)
+- Can place orders at any time during any active time window
+- Suitable for administrative staff, cafeteria workers, maintenance, etc.
+
+<Note>
+  Both Teachers and Staff have identical ordering permissions. The role distinction helps with reporting and user organization.
+</Note>
+
+## Viewing Active Invitations
+
+The Invitations page displays two cards - one for Teachers and one for Staff. Each card shows:
+
+- **Status badge**: Green "Activo" (Active) or gray "Inactivo" (Inactive)
+- **QR code**: Scannable code for mobile registration (when active)
+- **Invitation URL**: Direct link that can be copied and shared
+- **Expiration date**: When the invitation will automatically become invalid
+- **Usage statistics**: Current uses / maximum uses (if limited)
+
+<Warning>
+  Only one invitation can be active per role type at a time. Creating a new invitation automatically revokes the previous one.
+</Warning>
+
+## Creating an Invitation
+
+<Steps>
+  <Step title="Click Generate QR">
+    On the card for the role you want (Teachers or Staff), click the **✨ Generar QR** button.
+  </Step>
+  
+  <Step title="Configure validity period">
+    In the modal that appears, set the "Validez (días)" field:
+    - Default: 7 days
+    - Range: 1-365 days
+    - The invitation expires at midnight on the last day
+  </Step>
+  
+  <Step title="Set usage limits (optional)">
+    In the "Máximo de usos" field:
+    - Leave empty for unlimited registrations
+    - Enter a number to limit how many people can use this invitation
+    - Once the limit is reached, the invitation becomes invalid
+  </Step>
+  
+  <Step title="Generate the invitation">
+    Click **Generar** to create the invitation. The card updates immediately showing the QR code and URL.
+  </Step>
+</Steps>
+
+### Example Configuration
+
+**Scenario**: You want to onboard 5 new teachers during orientation week
+
+- **Validity**: 14 days (covers the orientation period plus some buffer)
+- **Maximum uses**: 5 (exactly the number of new teachers)
+
+This ensures the invitation expires after two weeks or after 5 teachers register, whichever comes first.
+
+## Sharing Invitations
+
+Once an invitation is active, you have several options for distributing it:
+
+### Copy the URL
+
+<Steps>
+  <Step title="Click Copy Link">
+    On the active invitation card, click the **📋 Copiar enlace** button.
+  </Step>
+  
+  <Step title="URL copied">
+    The invitation URL is copied to your clipboard and ready to paste.
+  </Step>
+  
+  <Step title="Share via email or chat">
+    Paste the URL into an email, messaging app, or communication platform to distribute it digitally.
+  </Step>
+</Steps>
+
+### Use the QR Code
+
+<Steps>
+  <Step title="Display on screen">
+    Open the Invitations page on a computer or tablet and show the QR code to teachers/staff to scan with their mobile devices.
+  </Step>
+  
+  <Step title="Or print it">
+    Use your browser's print function to print the page with the QR code. You can post it in a staff room or include it in orientation materials.
+  </Step>
+  
+  <Step title="Teachers scan to register">
+    Teachers and staff scan the QR code with their phone camera, which opens the registration page with the invitation token pre-applied.
+  </Step>
+</Steps>
+
+<Note>
+  QR codes are dynamically generated. If you revoke and recreate an invitation, a new QR code appears automatically.
+</Note>
+
+## Managing Active Invitations
+
+### Viewing Invitation Status
+
+Active invitation cards display real-time information:
+
+- **Expiration countdown**: How many days remain until the invitation expires
+- **Current usage**: Number of people who have registered using this invitation
+- **Usage limit**: Maximum registrations allowed (or unlimited)
+
+**Example**: "Usos: 3/5" means 3 people have registered and 2 uses remain
+
+### When Invitations Become Invalid
+
+An invitation automatically becomes invalid when:
+
+- The expiration date is reached
+- The maximum usage limit is reached (if set)
+- An admin manually revokes it
+
+Invalid invitations:
+- No longer work for new registrations
+- Show "Inactivo" status on the admin page
+- Require generating a new invitation to continue registrations
+
+## Revoking Invitations
+
+To immediately invalidate an active invitation:
+
+<Steps>
+  <Step title="Click the Revoke button">
+    On the active invitation card, click the **🗑 Revocar** button.
+  </Step>
+  
+  <Step title="Invitation revoked">
+    The invitation immediately becomes invalid. The card updates to show "Inactivo" status with a lock icon.
+  </Step>
+  
+  <Step title="Generate new if needed">
+    If you need to continue registrations, generate a new invitation. The old URL and QR code will no longer work.
+  </Step>
+</Steps>
+
+### When to Revoke Invitations
+
+- Orientation week ended and all new teachers have registered
+- The invitation URL was accidentally shared publicly
+- You made a mistake in the configuration (wrong validity or usage limit)
+- You need to temporarily stop new teacher/staff registrations
+
+<Warning>
+  Revoking an invitation does not affect users who already registered using it. Their accounts remain active.
+</Warning>
+
+## Invitation Registration Flow
+
+Here's what happens when someone uses an invitation:
+
+<Steps>
+  <Step title="User follows the invitation link">
+    The teacher or staff member clicks the URL or scans the QR code.
+  </Step>
+  
+  <Step title="Registration page opens">
+    The CaféIES registration page appears with the invitation token embedded in the URL.
+  </Step>
+  
+  <Step title="User enters their information">
+    They provide their name, email, and password. The role is automatically set based on the invitation type.
+  </Step>
+  
+  <Step title="Immediate account activation">
+    Unlike student accounts (which require validation), teacher and staff accounts are active immediately after registration.
+  </Step>
+  
+  <Step title="User can log in">
+    The new teacher or staff member can immediately log in and place orders with unrestricted access.
+  </Step>
+</Steps>
+
+<Note>
+  Teacher and staff registrations do NOT appear in the pending validation queue. They bypass validation and are active immediately.
+</Note>
+
+## Best Practices
+
+<Card title="Use Short Validity Periods" icon="calendar">
+  Set expiration dates that match your actual onboarding timeline. For ongoing onboarding, use 7-14 days and regenerate as needed. For one-time events, use 1-3 days.
+</Card>
+
+<Card title="Set Usage Limits" icon="hash">
+  If you know exactly how many teachers or staff need to register, set a maximum usage limit. This prevents unauthorized registrations if the link is shared beyond your intended audience.
+</Card>
+
+<Card title="Revoke After Events" icon="shield-check">
+  After completing staff onboarding events (orientation, staff meetings), revoke the invitation even if it hasn't expired yet. This maintains tighter security.
+</Card>
+
+<Card title="Track Registration Timing" icon="clock">
+  Monitor the "Usos" counter to see when people are registering. If usage stops before the limit, follow up with staff who haven't completed registration.
+</Card>
+
+<Card title="Keep URLs Private" icon="lock">
+  Share invitation links only through secure channels (school email, internal chat systems). Avoid posting them publicly where students could register with elevated privileges.
+</Card>
+
+<Card title="Print QR Codes Strategically" icon="printer">
+  When printing QR codes for staff areas, place them in locations not accessible to students. Consider posting in teachers' lounges, administrative offices, or including in sealed orientation packets.
+</Card>
+
+## Troubleshooting
+
+### Invitation Shows "Inactivo" But Was Just Created
+
+This usually means:
+- The invitation was revoked accidentally
+- Another admin created a new invitation (only one can be active per role)
+- The expiration date was set to today or yesterday
+
+Solution: Generate a new invitation with the correct configuration.
+
+### QR Code Won't Scan
+
+Possible causes:
+- Screen brightness too low - increase brightness
+- Printed QR code is too small - print larger or zoom in
+- Invitation has expired - check the status and generate a new one if needed
+
+### Teacher Registered But Has Wrong Role
+
+If someone used the wrong invitation type:
+1. You cannot change user roles through the admin interface
+2. The user must register again using the correct invitation link
+3. You can suspend the incorrectly-created account on the Users page
+
+### Usage Counter Not Incrementing
+
+If people register but the "Usos" counter doesn't increase:
+- They may have used an old/revoked invitation link
+- They may have registered as a student instead (students don't use invitations)
+- Check the Users page to see if their accounts appear with the correct role
+
+## Security Considerations
+
+<Warning>
+  Invitation links grant elevated access compared to student accounts. Treat them with the same security as staff credentials.
+</Warning>
+
+**Security best practices**:
+- Only generate invitations when actively onboarding new staff
+- Revoke immediately after your onboarding period ends
+- Use maximum usage limits when possible
+- Never post invitation URLs on public websites or social media
+- Periodically audit the Users page for unexpected teacher/staff accounts
+- Consider regenerating invitations each semester with fresh expiration dates

@@ -1,0 +1,133 @@
+---
+title: 'List Products'
+api: 'GET /api/productos'
+---
+
+Retrieve a list of products from the cafeteria catalog. This endpoint supports filtering by category and active status.
+
+## Authentication
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token. All authenticated users can access this endpoint.
+</ParamField>
+
+**Required Role:** Any authenticated user (Alumno, Profesor, Personal, Admin)
+
+## Query Parameters
+
+<ParamField query="categoriaId" type="integer">
+  Filter products by category ID. If not provided, products from all categories are returned.
+</ParamField>
+
+<ParamField query="soloActivos" type="boolean" default="true">
+  When `true`, only active products are returned. Set to `false` to include inactive products.
+</ParamField>
+
+## Response
+
+<ResponseField name="data" type="array">
+  Array of product objects
+  
+  <ResponseField name="id" type="integer">
+    Unique identifier for the product
+  </ResponseField>
+  
+  <ResponseField name="nombre" type="string">
+    Product name (max 120 characters)
+  </ResponseField>
+  
+  <ResponseField name="descripcion" type="string">
+    Product description (max 300 characters)
+  </ResponseField>
+  
+  <ResponseField name="precio" type="decimal">
+    Product price in euros (format: decimal(6,2))
+  </ResponseField>
+  
+  <ResponseField name="stock" type="integer">
+    Available units. `-1` means no stock control.
+  </ResponseField>
+  
+  <ResponseField name="imagenUrl" type="string" nullable>
+    URL or path to the product image (max 500 characters)
+  </ResponseField>
+  
+  <ResponseField name="activo" type="boolean">
+    Whether the product is currently active
+  </ResponseField>
+  
+  <ResponseField name="nivelStock" type="string">
+    Stock level indicator: `"ok"`, `"bajo"` (5 or fewer units), or `"agotado"` (0 units)
+  </ResponseField>
+  
+  <ResponseField name="categoriaId" type="integer">
+    ID of the product's category
+  </ResponseField>
+  
+  <ResponseField name="categoriaNombre" type="string">
+    Name of the product's category
+  </ResponseField>
+  
+  <ResponseField name="categoriaEmoji" type="string">
+    Emoji representing the product's category
+  </ResponseField>
+</ResponseField>
+
+## Example Request
+
+```bash
+curl -X GET "https://api.cafeies.com/api/productos?categoriaId=1&soloActivos=true" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+
+## Example Response
+
+```json
+[
+  {
+    "id": 1,
+    "nombre": "Bocadillo de Jamón",
+    "descripcion": "Bocadillo de jamón serrano con tomate",
+    "precio": 3.50,
+    "stock": 15,
+    "imagenUrl": "/images/productos/bocadillo-jamon.jpg",
+    "activo": true,
+    "nivelStock": "ok",
+    "categoriaId": 1,
+    "categoriaNombre": "Bocadillos",
+    "categoriaEmoji": "🥖"
+  },
+  {
+    "id": 2,
+    "nombre": "Bocadillo de Tortilla",
+    "descripcion": "Bocadillo de tortilla española",
+    "precio": 3.00,
+    "stock": 4,
+    "imagenUrl": "/images/productos/bocadillo-tortilla.jpg",
+    "activo": true,
+    "nivelStock": "bajo",
+    "categoriaId": 1,
+    "categoriaNombre": "Bocadillos",
+    "categoriaEmoji": "🥖"
+  }
+]
+```
+
+## Response Codes
+
+<ResponseField name="200" type="OK">
+  Products retrieved successfully
+</ResponseField>
+
+<ResponseField name="401" type="Unauthorized">
+  Missing or invalid authentication token
+</ResponseField>
+
+## Notes
+
+- Products are ordered by category order (`Categoria.Orden`) and then by product name
+- The `nivelStock` field is calculated automatically:
+  - `"ok"`: Stock is -1 (unlimited) or > 5 units
+  - `"bajo"`: Stock is between 1-5 units
+  - `"agotado"`: Stock is 0
+- By default, only active products are returned unless `soloActivos=false` is specified

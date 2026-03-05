@@ -1,0 +1,217 @@
+---
+title: 'Update Order Status'
+api: 'PATCH /api/pedidos/{id}/estado'
+description: 'Change the status of an order (cafeteria staff and admin only)'
+---
+
+## Overview
+
+Updates the status of an existing order as it moves through the preparation workflow. Only cafeteria staff and administrators can change order status. When the status changes, the system sends a real-time notification to the user via SignalR.
+
+## Authentication
+
+<Warning>
+  **Required:** Bearer token (JWT)
+  
+  **Roles:** Admin, Personal (cafeteria staff)
+  
+  Students and professors **cannot** access this endpoint.
+</Warning>
+
+## Path Parameters
+
+<ParamField path="id" type="integer" required>
+  The unique identifier of the order to update
+</ParamField>
+
+## Request Body
+
+<ParamField body="NuevoEstado" type="enum" required>
+  The new status to set for the order.
+  
+  **Possible values:**
+  - `0` - Pendiente (Pending)
+  - `1` - EnPreparacion (In Preparation)
+  - `2` - Listo (Ready for pickup)
+  - `3` - Entregado (Delivered)
+  - `4` - Cancelado (Cancelled)
+</ParamField>
+
+## Response
+
+<ResponseField name="status" type="204">
+  No Content - The status was successfully updated. No response body is returned.
+</ResponseField>
+
+## Example Request
+
+```bash
+curl -X PATCH https://api.cafeies.com/api/pedidos/158/estado \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "NuevoEstado": 1
+  }'
+```
+
+## Example Response
+
+```
+204 No Content
+```
+
+## Error Responses
+
+<ResponseExample>
+```json 404 - Order not found
+{
+  "type": "https://tools.ietf.org/html/rfc7231#section-6.5.4",
+  "title": "Not Found",
+  "status": 404
+}
+```
+
+```json 401 - Unauthorized
+{
+  "type": "https://tools.ietf.org/html/rfc7235#section-3.1",
+  "title": "Unauthorized",
+  "status": 401
+}
+```
+
+```json 403 - Forbidden (wrong role)
+{
+  "type": "https://tools.ietf.org/html/rfc7231#section-6.5.3",
+  "title": "Forbidden",
+  "status": 403
+}
+```
+</ResponseExample>
+
+## Order Status Workflow
+
+The typical order lifecycle follows this progression:
+
+```mermaid
+flowchart LR
+    A[0: Pendiente] --> B[1: EnPreparacion]
+    B --> C[2: Listo]
+    C --> D[3: Entregado]
+    A -.-> E[4: Cancelado]
+    B -.-> E
+```
+
+### Status Descriptions
+
+| Status | Value | Description | Typical Action |
+|--------|-------|-------------|----------------|
+| **Pendiente** | 0 | Order just submitted, payment confirmed | Cafeteria sees new order notification |
+| **EnPreparacion** | 1 | Cafeteria staff acknowledged and started preparing | Staff taps "Start Preparing" |
+| **Listo** | 2 | Order is ready at pickup counter | Staff taps "Mark Ready" when done |
+| **Entregado** | 3 | Student picked up the order | Staff taps "Mark Delivered" after handoff |
+| **Cancelado** | 4 | Order was cancelled | Staff or admin cancels due to issue |
+
+## Real-time Notifications
+
+When an order status changes, the system sends a SignalR message to the user who placed the order:
+
+```typescript
+// SignalR event sent to user
+{
+  eventName: "EstadoPedidoActualizado",
+  data: {
+    Id: 158,
+    Estado: "Listo"
+  }
+}
+```
+
+### Client-side Integration
+
+```typescript
+// Example: Mobile app listening for status updates
+connection.on('EstadoPedidoActualizado', (data) => {
+  console.log(`Order ${data.Id} is now ${data.Estado}`);
+  
+  if (data.Estado === 'Listo') {
+    showNotification('Your order is ready for pickup!');
+  }
+});
+```
+
+## Use Cases
+
+### Cafeteria Dashboard
+
+1. **New Order Arrives**: Shows as "Pendiente"
+2. **Staff Starts Preparing**: Tap button → `PATCH /api/pedidos/158/estado` with `NuevoEstado: 1`
+3. **Order Complete**: Tap button → `PATCH /api/pedidos/158/estado` with `NuevoEstado: 2`
+4. **Student Picks Up**: Tap button → `PATCH /api/pedidos/158/estado` with `NuevoEstado: 3`
+
+### Student App
+
+- Receives real-time notification when status changes to "Listo"
+- Push notification: "Your order #42 is ready for pickup!"
+- App badge shows ready orders
+
+### Admin Panel
+
+- Can change any order to "Cancelado" if needed
+- View order history and status transitions
+- Generate reports on order fulfillment times
+
+## Authorization Details
+
+### Role Check
+
+The endpoint uses the `[Authorize(Roles = "Admin,Personal")]` attribute:
+
+```csharp
+// From source code (PedidosController.cs:138)
+[Authorize(Roles = "Admin,Personal")]
+public async Task<ActionResult> CambiarEstado(int id, [FromBody] CambiarEstadoRequest req)
+```
+
+### Token Requirements
+
+The JWT token must contain a `role` claim with value:
+- `Admin` (RolUsuario = 99), or
+- `Personal` (RolUsuario = 2)
+
+Tokens with `Alumno` or `Profesor` roles will receive a 403 Forbidden response.
+
+## Implementation Details
+
+### Database Update
+
+```csharp
+// Simplified implementation flow
+var pedido = await _db.Pedidos.FindAsync(id);
+pedido.Estado = req.NuevoEstado;
+await _db.SaveChangesAsync();
+```
+
+### SignalR Notification
+
+```csharp
+// Notify the specific user who owns the order
+await _hub.Clients.Group($"user-{pedido.UsuarioId}")
+  .SendAsync("EstadoPedidoActualizado", new { 
+    pedido.Id, 
+    Estado = req.NuevoEstado.ToString() 
+  });
+```
+
+## Best Practices
+
+1. **Sequential Updates**: Follow the natural order progression when possible
+2. **Avoid Skipping States**: Don't jump from Pendiente directly to Entregado
+3. **Audit Trail**: Consider logging status changes with timestamp and staff member
+4. **Cancellation Notes**: Add a note explaining why an order was cancelled
+5. **No Reversal**: Once marked Entregado, consider the order final
+
+## Related Endpoints
+
+- [Admin Dashboard](/api/admin/dashboard) - View active orders (Admin/Personal only)
+- [Create Order](/api/orders/create) - Place a new order
+- [My Orders](/api/orders/my-orders) - View order history (includes status)

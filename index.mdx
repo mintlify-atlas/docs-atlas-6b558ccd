@@ -1,97 +1,109 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "Welcome to CaféIES"
+description: "Modern school cafeteria ordering system with real-time tracking"
 ---
 
-## Setting up
+<div style={{
+  background: 'linear-gradient(135deg, #6421e6 0%, #b48cf4 100%)',
+  borderRadius: '12px',
+  padding: '3rem 2rem',
+  marginBottom: '2rem',
+  color: 'white'
+}}>
+  <h1 style={{ fontSize: '3rem', fontWeight: '700', marginBottom: '1rem', color: 'white' }}>
+    CaféIES
+  </h1>
+  <p style={{ fontSize: '1.25rem', opacity: 0.95, marginBottom: '1.5rem' }}>
+    School cafeteria ordering system with mobile app, admin panel, and real-time order tracking
+  </p>
+  <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+    <a href="/quickstart" style={{
+      background: 'white',
+      color: '#6421e6',
+      padding: '0.75rem 1.5rem',
+      borderRadius: '4px',
+      fontWeight: '600',
+      textDecoration: 'none',
+      display: 'inline-block'
+    }}>
+      Get Started
+    </a>
+    <a href="/architecture" style={{
+      background: 'rgba(255,255,255,0.2)',
+      color: 'white',
+      padding: '0.75rem 1.5rem',
+      borderRadius: '4px',
+      fontWeight: '600',
+      textDecoration: 'none',
+      display: 'inline-block',
+      border: '2px solid white'
+    }}>
+      Architecture
+    </a>
+  </div>
+</div>
 
-Get your documentation site up and running in minutes.
+## Key Features
 
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
-
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
+<CardGroup cols={2}>
+  <Card title="Role-Based Access" icon="users" href="/features/user-management">
+    Student, teacher, staff, and admin roles with validation workflow
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
+  <Card title="Time-Scheduled Orders" icon="clock" href="/features/schedule-restrictions">
+    Order restrictions by shift with configurable time windows
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+  <Card title="Real-Time Updates" icon="bolt" href="/features/real-time-updates">
+    Live order tracking powered by SignalR
   </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
+  <Card title="Mobile App" icon="mobile" href="/apps/mobile-app">
+    Cross-platform MAUI app for iOS and Android
   </Card>
-</Columns>
+  <Card title="Admin Panel" icon="gauge" href="/apps/admin-panel">
+    Blazor WebAssembly dashboard for cafeteria management
+  </Card>
+  <Card title="QR Invitations" icon="qrcode" href="/guides/admin/generating-invitations">
+    Secure invitation system for staff registration
+  </Card>
+</CardGroup>
 
-## Create beautiful pages
+## Getting Started
 
-Everything you need to create world-class documentation.
+<CardGroup cols={3}>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Deploy the full system in under 10 minutes
+  </Card>
+  <Card title="Architecture" icon="diagram-project" href="/architecture">
+    Understand the system design
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/auth/login">
+    Explore the REST API
+  </Card>
+</CardGroup>
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+## Use Cases
 
-## Need inspiration?
+<AccordionGroup>
+  <Accordion title="For Students">
+    Browse the menu, place orders during allowed time windows, track order status in real-time, and pick up when ready. All from your mobile device.
+  </Accordion>
+  <Accordion title="For Teachers & Staff">
+    No time restrictions — order anytime during operating hours. Register using QR codes provided by administrators.
+  </Accordion>
+  <Accordion title="For Administrators">
+    Manage products, validate student registrations, generate staff invitations, configure time schedules, and monitor all orders through the admin panel.
+  </Accordion>
+  <Accordion title="For Cafeteria Staff">
+    Receive orders instantly, update preparation status, manage stock levels, and communicate with customers through order states.
+  </Accordion>
+</AccordionGroup>
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+## Technology Stack
+
+Built with modern .NET technologies for performance, scalability, and maintainability:
+
+- **Backend**: ASP.NET Core 9 with Entity Framework Core
+- **Mobile**: .NET MAUI for cross-platform iOS/Android
+- **Admin**: Blazor WebAssembly for responsive web interface
+- **Database**: SQL Server with EF Core migrations
+- **Real-Time**: SignalR for live order updates
+- **Authentication**: JWT with refresh tokens and BCrypt password hashing

@@ -1,0 +1,790 @@
+---
+title: 'Admin Panel (Blazor WebAssembly)'
+description: 'Web-based administration dashboard for managing products, orders, users, and cafeteria operations'
+icon: 'gauge-high'
+---
+
+## Overview
+
+The CaféIES Admin Panel is a **Blazor WebAssembly** (WASM) application that provides a powerful web interface for cafeteria staff and administrators. It runs entirely in the browser and communicates with the backend API via HTTP.
+
+<CardGroup cols={2}>
+  <Card title="Pure Client-Side" icon="browser">
+    Runs entirely in the browser - no server-side rendering
+  </Card>
+  <Card title="Live Dashboard" icon="chart-line">
+    Real-time order queue with instant status updates
+  </Card>
+  <Card title="Complete CRUD" icon="pen-to-square">
+    Manage products, categories, users, schedules, and invitations
+  </Card>
+  <Card title="Admin-Only Access" icon="shield">
+    JWT authentication with Admin role requirement
+  </Card>
+</CardGroup>
+
+## Architecture
+
+### Blazor WebAssembly Model
+
+Blazor WASM runs .NET code directly in the browser using WebAssembly:
+
+```
+Browser
+  ├── WebAssembly Runtime (.NET)
+  │   ├── CafeIES.Admin.dll
+  │   ├── Razor Components (.razor files)
+  │   └── Services (AuthAdminService, AdminApiService)
+  └── JavaScript Interop (sessionStorage, confirm dialogs)
+
+      ↕ HTTPS
+
+CafeIES.API (ASP.NET Core)
+```
+
+### Project Structure
+
+```
+CafeIES.Admin/
+├── Pages/
+│   ├── Dashboard.razor         # Stats + live order queue
+│   ├── Productos.razor         # Product catalog management
+│   ├── Usuarios.razor          # User approval and management
+│   ├── Categorias.razor        # Category CRUD
+│   ├── Horarios.razor          # Time window configuration
+│   ├── Invitaciones.razor      # QR code invitations
+│   ├── Pedidos.razor           # Full order history
+│   ├── Reportes.razor          # Analytics and reports
+│   └── Login.razor             # Admin authentication
+├── Layout/
+│   ├── MainLayout.razor        # Sidebar navigation
+│   └── EmptyLayout.razor       # No chrome (for login)
+├── Services/
+│   ├── AuthAdminService.cs     # JWT authentication
+│   └── AdminApiService.cs      # HTTP API client
+└── Program.cs                  # Blazor app entry point
+```
+
+### Startup Configuration
+
+```csharp Program.cs
+var builder = WebAssemblyHostBuilder.CreateDefault(args);
+builder.RootComponents.Add<CafeIES.Admin.App>("#app");
+builder.RootComponents.Add<HeadOutlet>("head::after");
+
+// HTTP Client with API base URL
+builder.Services.AddScoped(sp => new HttpClient
+{
+    BaseAddress = new Uri("https://localhost:50658/")
+});
+
+// Services
+builder.Services.AddScoped<AdminApiService>();
+builder.Services.AddScoped<AuthAdminService>();
+
+await builder.Build().RunAsync();
+```
+
+<Note>
+  Blazor WASM services are registered as **Scoped** (per browser tab) rather than Singleton or Transient.
+</Note>
+
+## Authentication
+
+### AuthAdminService
+
+Handles JWT token management and session persistence:
+
+```csharp Services/AuthAdminService.cs
+public class AuthAdminService
+{
+    private readonly HttpClient _http;
+    private readonly IJSRuntime _js;
+
+    private string?     _accessToken;
+    private string?     _refreshToken;
+    private UsuarioDto? _usuario;
+
+    public bool EstaAutenticado => !string.IsNullOrEmpty(_accessToken);
+    public string NombreUsuario => _usuario?.NombreCompleto ?? "Admin";
+
+    public async Task<bool> LoginAsync(string email, string password)
+    {
+        var resp = await _http.PostAsJsonAsync("api/auth/login",
+            new LoginRequest(email, password));
+
+        if (!resp.IsSuccessStatusCode) return false;
+
+        var data = await resp.Content.ReadFromJsonAsync<LoginResponse>();
+        if (data is null) return false;
+
+        // Only admins can use the panel
+        if (data.Usuario.Rol != RolUsuario.Admin) return false;
+
+        _accessToken  = data.AccessToken;
+        _refreshToken = data.RefreshToken;
+        _usuario      = data.Usuario;
+
+        // Set Authorization header for all future requests
+        _http.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", _accessToken);
+
+        // Persist to sessionStorage (survives page refresh)
+        await _js.InvokeVoidAsync("sessionStorage.setItem", "admin_token", _accessToken);
+        await _js.InvokeVoidAsync("sessionStorage.setItem", "admin_refresh", _refreshToken);
+
+        return true;
+    }
+
+    /// <summary>Restore session from sessionStorage (on page reload)</summary>
+    public async Task RestaurarSesionAsync()
+    {
+        _accessToken = await _js.InvokeAsync<string?>("sessionStorage.getItem", "admin_token");
+        _refreshToken = await _js.InvokeAsync<string?>("sessionStorage.getItem", "admin_refresh");
+
+        if (!string.IsNullOrEmpty(_accessToken))
+            _http.DefaultRequestHeaders.Authorization =
+                new AuthenticationHeaderValue("Bearer", _accessToken);
+    }
+
+    public async Task LogoutAsync()
+    {
+        _accessToken  = null;
+        _refreshToken = null;
+        _usuario      = null;
+        _http.DefaultRequestHeaders.Authorization = null;
+        await _js.InvokeVoidAsync("sessionStorage.clear");
+    }
+}
+```
+
+<Warning>
+  **Session Storage**: Tokens are stored in `sessionStorage`, not `localStorage`. This means they're cleared when the tab closes for better security.
+</Warning>
+
+### Login Page
+
+Simple login form that redirects to dashboard on success:
+
+```razor Pages/Login.razor
+@page "/login"
+@inject AuthAdminService Auth
+@inject NavigationManager Nav
+@layout EmptyLayout
+
+<div class="login-container">
+    <div class="login-card">
+        <h1>CaféIES Admin</h1>
+        <EditForm Model="@_form" OnValidSubmit="HandleLogin">
+            <div class="form-group">
+                <label>Email</label>
+                <InputText @bind-Value="_form.Email" class="form-input"/>
+            </div>
+            <div class="form-group">
+                <label>Contraseña</label>
+                <InputText type="password" @bind-Value="_form.Password" class="form-input"/>
+            </div>
+            @if (!string.IsNullOrEmpty(_errorMsg))
+            {
+                <p class="error-msg">@_errorMsg</p>
+            }
+            <button type="submit" class="btn-primary" disabled="@_loading">
+                @(_loading ? "Iniciando sesión..." : "Entrar")
+            </button>
+        </EditForm>
+    </div>
+</div>
+
+@code {
+    private LoginForm _form = new();
+    private bool _loading;
+    private string _errorMsg = string.Empty;
+
+    private async Task HandleLogin()
+    {
+        _loading = true;
+        _errorMsg = string.Empty;
+
+        var success = await Auth.LoginAsync(_form.Email, _form.Password);
+        _loading = false;
+
+        if (success)
+            Nav.NavigateTo("/");
+        else
+            _errorMsg = "Email o contraseña incorrectos, o no tienes permisos de administrador.";
+    }
+
+    class LoginForm
+    {
+        public string Email { get; set; } = string.Empty;
+        public string Password { get; set; } = string.Empty;
+    }
+}
+```
+
+## Core Pages
+
+### Dashboard: Real-Time Operations Center
+
+The dashboard shows key metrics and a live order queue:
+
+```razor Pages/Dashboard.razor
+@page "/"
+@inject AdminApiService Api
+
+<div class="page-header">
+    <h1>Dashboard</h1>
+    <span class="page-sub">Hoy, @DateTime.Now.ToString("dddd d MMMM")</span>
+</div>
+
+<!-- Stats Grid -->
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-label">PEDIDOS HOY</div>
+        <div class="stat-value">@_dashboard.PedidosHoy</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">INGRESOS HOY</div>
+        <div class="stat-value">@_dashboard.IngresosHoy.ToString("F2")€</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">PRODUCTOS ACTIVOS</div>
+        <div class="stat-value">@_dashboard.ProductosActivos</div>
+        @if (_dashboard.ProductosStockBajo > 0)
+        {
+            <div class="stat-warning">⚠️ @_dashboard.ProductosStockBajo con stock bajo</div>
+        }
+    </div>
+    <div class="stat-card @(_dashboard.AlumnosPendientes > 0 ? "stat-card--alert" : "")">
+        <div class="stat-label">ALUMNOS PENDIENTES</div>
+        <div class="stat-value">@_dashboard.AlumnosPendientes</div>
+        @if (_dashboard.AlumnosPendientes > 0)
+        {
+            <a href="/usuarios" class="stat-link">Revisar →</a>
+        }
+    </div>
+</div>
+
+<!-- Live Order Queue -->
+<div class="section">
+    <div class="section-header">
+        <h2>Pedidos en curso</h2>
+        <span class="live-badge">● EN VIVO</span>
+    </div>
+
+    @if (!_dashboard.PedidosEnCurso.Any())
+    {
+        <div class="empty-state">
+            <span class="empty-icon">✅</span>
+            <p>Sin pedidos pendientes ahora mismo</p>
+        </div>
+    }
+    else
+    {
+        <div class="orders-live-grid">
+            @foreach (var pedido in _dashboard.PedidosEnCurso)
+            {
+                <div class="order-live-card @GetEstadoClass(pedido.Estado)">
+                    <div class="order-num">#@pedido.NumeroPedido.ToString("D3")</div>
+                    <div class="order-info">
+                        <div class="order-user">@pedido.UsuarioNombre</div>
+                        <div class="order-items">
+                            @string.Join(", ", pedido.Lineas.Select(l => $"{l.ProductoNombre} ×{l.Cantidad}"))
+                        </div>
+                        <div class="order-time">@pedido.FechaCreacion.ToString("HH:mm")</div>
+                    </div>
+                    <div class="order-actions">
+                        @if (pedido.Estado == EstadoPedido.Pendiente)
+                        {
+                            <button class="btn-status btn-prep"
+                                    @onclick="() => CambiarEstado(pedido.Id, EstadoPedido.EnPreparacion)">
+                                En preparación
+                            </button>
+                        }
+                        else if (pedido.Estado == EstadoPedido.EnPreparacion)
+                        {
+                            <button class="btn-status btn-ready"
+                                    @onclick="() => CambiarEstado(pedido.Id, EstadoPedido.Listo)">
+                                ✓ Listo
+                            </button>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private DashboardDto? _dashboard;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _dashboard = await Api.GetDashboardAsync();
+    }
+
+    private async Task CambiarEstado(int pedidoId, EstadoPedido nuevoEstado)
+    {
+        await Api.CambiarEstadoPedidoAsync(pedidoId, nuevoEstado);
+        _dashboard = await Api.GetDashboardAsync();  // Refresh
+    }
+}
+```
+
+**Dashboard Features:**
+- **Stats Cards**: Today's orders, revenue, active products, pending student approvals
+- **Live Order Queue**: Real-time view of pending and in-preparation orders
+- **Quick Actions**: One-click status changes (Pendiente → En Preparación → Listo)
+- **Stock Alerts**: Highlights products with low stock
+
+### Productos: Catalog Management
+
+Full CRUD interface for products with inline stock editing:
+
+```razor Pages/Productos.razor
+@page "/productos"
+@inject AdminApiService Api
+@inject IJSRuntime JS
+
+<div class="page-header">
+    <h1>Productos</h1>
+    <button class="btn-primary" @onclick="AbrirNuevoProducto">+ Nuevo producto</button>
+</div>
+
+<!-- Filters -->
+<div class="filters-bar">
+    <input class="search-input" placeholder="🔍 Buscar producto..." 
+           @bind="_busqueda" @bind:event="oninput"/>
+    <select class="filter-select" @bind="_categoriaFiltro">
+        <option value="">Todas las categorías</option>
+        @foreach (var cat in _categorias)
+        {
+            <option value="@cat.Nombre">@cat.Emoji @cat.Nombre</option>
+        }
+    </select>
+    <label class="filter-check">
+        <input type="checkbox" @bind="_mostrarOcultos"/> Mostrar ocultos
+    </label>
+</div>
+
+<!-- Product Table -->
+<div class="table-card">
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Producto</th>
+                <th>Categoría</th>
+                <th>Precio</th>
+                <th>Stock</th>
+                <th>Estado</th>
+                <th>Acciones</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var prod in ProductosFiltrados)
+            {
+                <tr class="@(!prod.Activo ? "row--hidden" : "")">
+                    <td>
+                        <div class="prod-name-cell">
+                            <span class="prod-emoji">@prod.CategoriaEmoji</span>
+                            <div>
+                                <div class="prod-name">@prod.Nombre</div>
+                                <div class="prod-desc">@prod.Descripcion</div>
+                            </div>
+                        </div>
+                    </td>
+                    <td><span class="cat-badge">@prod.CategoriaNombre</span></td>
+                    <td class="price-cell">@prod.Precio.ToString("F2")€</td>
+                    <td>
+                        @if (prod.Stock == -1)
+                        {
+                            <span class="stock-pill stock--unlimited">∞</span>
+                        }
+                        else
+                        {
+                            <!-- Inline stock editor -->
+                            <input type="number" class="stock-quick-edit"
+                                   min="0" value="@prod.Stock"
+                                   @onchange="e => ActualizarStock(prod.Id, int.Parse(e.Value!.ToString()!))"
+                                   title="Editar stock"/>
+                        }
+                    </td>
+                    <td>
+                        <span class="status-pill @(prod.Activo ? "pill--on" : "pill--off")">
+                            @(prod.Activo ? "Activo" : "Oculto")
+                        </span>
+                    </td>
+                    <td>
+                        <div class="action-buttons">
+                            <button class="btn-icon" title="Editar"
+                                    @onclick="() => AbrirEditar(prod)">✏️</button>
+                            <button class="btn-icon" title="@(prod.Activo ? "Ocultar" : "Activar")"
+                                    @onclick="() => ToggleActivo(prod.Id)">
+                                @(prod.Activo ? "👁" : "🔒")
+                            </button>
+                            <button class="btn-icon btn-icon--danger" title="Eliminar"
+                                    @onclick="() => ConfirmarEliminar(prod.Id)">🗑</button>
+                        </div>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+```
+
+**Product Management Features:**
+- **Search and Filter**: By name and category
+- **Inline Stock Editing**: Type new stock value directly in the table
+- **Toggle Active/Hidden**: One-click to show/hide from customer app
+- **Stock Level Indicators**: Visual color coding for low/medium/high stock
+- **Modal Editor**: Full form for creating/editing products
+- **Soft Delete**: Products are hidden, not permanently deleted (preserves order history)
+
+### Usuarios: User Management
+
+Approve student registrations and manage user accounts:
+
+```razor Pages/Usuarios.razor
+@page "/usuarios"
+@inject AdminApiService Api
+
+<div class="page-header">
+    <h1>Usuarios</h1>
+</div>
+
+<!-- Tab Filters -->
+<div class="tabs">
+    <button class="tab @(_filtroEstado == null ? "tab--active" : "")"
+            @onclick="() => CambiarFiltro(null)">Todos</button>
+    <button class="tab @(_filtroEstado == EstadoCuenta.PendienteValidacion ? "tab--active" : "")"
+            @onclick="() => CambiarFiltro(EstadoCuenta.PendienteValidacion)">
+        Pendientes @if (_pendientesCount > 0) { <span class="tab-badge">@_pendientesCount</span> }
+    </button>
+    <button class="tab @(_filtroEstado == EstadoCuenta.Activa ? "tab--active" : "")"
+            @onclick="() => CambiarFiltro(EstadoCuenta.Activa)">Activos</button>
+</div>
+
+<!-- User Cards -->
+@foreach (var user in _usuarios)
+{
+    <div class="user-card">
+        <div class="user-info">
+            <h3>@user.NombreCompleto</h3>
+            <p>@user.Email</p>
+            <div class="user-meta">
+                <span class="badge badge--@user.Rol.ToString().ToLower()">@user.Rol</span>
+                @if (user.Turno.HasValue)
+                {
+                    <span class="badge">@user.Turno</span>
+                }
+            </div>
+        </div>
+        <div class="user-actions">
+            @if (user.Estado == EstadoCuenta.PendienteValidacion)
+            {
+                <button class="btn-success" @onclick="() => Aprobar(user.Id)">✓ Aprobar</button>
+                <button class="btn-danger" @onclick="() => Rechazar(user.Id)">✗ Rechazar</button>
+            }
+            else if (user.Estado == EstadoCuenta.Activa && user.Rol != RolUsuario.Admin)
+            {
+                <button class="btn-secondary" @onclick="() => Suspender(user.Id)">Suspender</button>
+            }
+            else if (user.Estado == EstadoCuenta.Suspendida)
+            {
+                <button class="btn-success" @onclick="() => Reactivar(user.Id)">Reactivar</button>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private List<UsuarioDto> _usuarios = new();
+    private EstadoCuenta? _filtroEstado = EstadoCuenta.PendienteValidacion;
+    private int _pendientesCount;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarUsuariosAsync();
+        _pendientesCount = await Api.GetPendientesCountAsync();
+    }
+
+    private async Task CargarUsuariosAsync()
+    {
+        _usuarios = _filtroEstado.HasValue
+            ? await Api.GetUsuariosPendientesAsync()
+            : await Api.GetTodosUsuariosAsync();
+    }
+
+    private async Task Aprobar(int id)
+    {
+        await Api.ValidarAlumnoAsync(id, aprobar: true);
+        await CargarUsuariosAsync();
+    }
+
+    private async Task Rechazar(int id)
+    {
+        await Api.ValidarAlumnoAsync(id, aprobar: false);
+        await CargarUsuariosAsync();
+    }
+}
+```
+
+### AdminApiService
+
+Centralized HTTP client for all admin operations:
+
+```csharp Services/AdminApiService.cs
+public class AdminApiService
+{
+    private readonly HttpClient _http;
+
+    public AdminApiService(HttpClient http)
+    {
+        _http = http;
+    }
+
+    // Dashboard
+    public async Task<DashboardDto?> GetDashboardAsync()
+    {
+        try { return await _http.GetFromJsonAsync<DashboardDto>("api/admin/dashboard"); }
+        catch { return null; }
+    }
+
+    // Products
+    public async Task<List<ProductoDto>> GetProductosAsync()
+    {
+        try { return await _http.GetFromJsonAsync<List<ProductoDto>>("api/productos?soloActivos=false") ?? new(); }
+        catch { return new(); }
+    }
+
+    public async Task<bool> CrearProductoAsync(CrearProductoRequest req)
+    {
+        try { return (await _http.PostAsJsonAsync("api/productos", req)).IsSuccessStatusCode; }
+        catch { return false; }
+    }
+
+    public async Task<bool> ActualizarStockAsync(int id, int nuevoStock)
+    {
+        try { return (await _http.PatchAsJsonAsync($"api/productos/{id}/stock", new ActualizarStockRequest(nuevoStock))).IsSuccessStatusCode; }
+        catch { return false; }
+    }
+
+    // Users
+    public async Task<List<UsuarioDto>> GetTodosUsuariosAsync()
+    {
+        try { return await _http.GetFromJsonAsync<List<UsuarioDto>>("api/admin/usuarios") ?? new(); }
+        catch { return new(); }
+    }
+
+    public async Task<bool> ValidarAlumnoAsync(int id, bool aprobar)
+    {
+        try { return (await _http.PatchAsync($"api/admin/usuarios/{id}/validar?aprobar={aprobar}", null)).IsSuccessStatusCode; }
+        catch { return false; }
+    }
+
+    // Orders
+    public async Task<bool> CambiarEstadoPedidoAsync(int id, EstadoPedido estado)
+    {
+        try { return (await _http.PatchAsJsonAsync($"api/pedidos/{id}/estado", new CambiarEstadoRequest(estado))).IsSuccessStatusCode; }
+        catch { return false; }
+    }
+
+    // Categories, Schedules, Invitations...
+}
+```
+
+## Additional Features
+
+### Invitaciones: QR Code Generation
+
+Create invitation links with QR codes for teachers and staff:
+
+- Generate time-limited or use-limited invitation tokens
+- Display QR code for easy mobile registration
+- Track usage and revoke invitations
+- Different types: Profesor vs. Personal
+
+### Horarios: Time Window Management
+
+Configure when students can place orders based on their shift (Mañana/Tarde):
+
+- Create time windows (e.g., "Desayuno", "Recreo", "Almuerzo")
+- Assign to specific shifts
+- Enable/disable windows
+- Prevent orders outside allowed times
+
+### Categorías: Product Categories
+
+Manage product categories with emoji icons:
+
+- Create, edit, delete categories
+- Assign emoji for visual identification
+- Reorder categories
+- Soft delete (hide instead of permanent removal)
+
+### Reportes: Analytics Dashboard
+
+View sales analytics and trends:
+
+- Revenue by day/week/month
+- Top-selling products
+- Peak ordering times
+- User activity statistics
+
+## Building and Deployment
+
+### Development
+
+<Steps>
+  <Step title="Start the API">
+    Make sure `CafeIES.API` is running at `https://localhost:50658`
+  </Step>
+  <Step title="Run Blazor App">
+    ```bash
+    cd CafeIES.Admin
+    dotnet run
+    ```
+    
+    Opens at `https://localhost:5001` (or similar)
+  </Step>
+  <Step title="Login">
+    Use admin credentials (default: see API seeder)
+  </Step>
+</Steps>
+
+### Production Build
+
+```bash
+cd CafeIES.Admin
+dotnet publish -c Release -o ./publish
+```
+
+The `publish/wwwroot` folder contains static files that can be hosted on:
+- **Azure Static Web Apps**
+- **GitHub Pages**
+- **Netlify/Vercel**
+- **Nginx/Apache** (any static file server)
+- **Azure Blob Storage** with Static Website hosting
+
+### CORS Configuration
+
+The API must allow the admin panel origin:
+
+```csharp Program.cs (API)
+builder.Services.AddCors(opt =>
+    opt.AddPolicy("AllowAdmin", p =>
+        p.SetIsOriginAllowed(origin =>
+                origin.StartsWith("https://localhost") ||
+                origin.StartsWith("http://localhost") ||
+                origin == "https://admin.cafeies.com")  // Production URL
+         .AllowAnyHeader()
+         .AllowAnyMethod()
+         .AllowCredentials()
+    )
+);
+
+app.UseCors("AllowAdmin");
+```
+
+## UI Components
+
+The admin panel uses custom CSS for a cohesive design:
+
+**Key UI Elements:**
+- **Sidebar Navigation**: Persistent left sidebar with icon links
+- **Stats Cards**: Metric cards with large numbers and optional warnings
+- **Data Tables**: Sortable tables with action buttons
+- **Modals**: Overlay forms for create/edit operations
+- **Status Pills**: Color-coded badges for order states
+- **Live Indicators**: Pulsing badges for real-time sections
+
+**Color Scheme:**
+```css
+:root {
+  --bg:      #0f0e0c;
+  --surface: #1a1916;
+  --accent:  #f5a623;
+  --text:    #f2ede6;
+  --muted:   #7a7468;
+  --green:   #4caf82;
+  --red:     #e05252;
+}
+```
+
+## JavaScript Interop
+
+Blazer calls JavaScript for browser APIs:
+
+```razor
+@inject IJSRuntime JS
+
+private async Task ConfirmarEliminar(int id)
+{
+    // Native browser confirm dialog
+    if (!await JS.InvokeAsync<bool>("confirm", "¿Eliminar este producto?"))
+        return;
+    
+    await Api.EliminarProductoAsync(id);
+}
+
+// Store in sessionStorage
+await JS.InvokeVoidAsync("sessionStorage.setItem", "key", "value");
+
+// Retrieve from sessionStorage
+var value = await JS.InvokeAsync<string>("sessionStorage.getItem", "key");
+```
+
+## Performance Considerations
+
+<CardGroup cols={2}>
+  <Card title="Lazy Loading" icon="clock">
+    Blazor WASM downloads assemblies on demand. Initial load can be slow, but subsequent navigation is instant.
+  </Card>
+  <Card title="Caching" icon="database">
+    Browser caches assemblies. Use cache-busting for deployments.
+  </Card>
+  <Card title="Pagination" icon="list">
+    Large data sets should be paginated server-side to avoid downloading thousands of records.
+  </Card>
+  <Card title="Compression" icon="file-zipper">
+    Enable Brotli compression on your web server for smaller download sizes.
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="White screen / blank page">
+    Check browser console for errors. Common causes:
+    - API not running or wrong base URL
+    - CORS policy blocking requests
+    - JavaScript errors preventing render
+  </Accordion>
+  <Accordion title="Authentication loop (keeps redirecting to login)">
+    Session storage may be cleared. Check that `RestaurarSesionAsync()` is called on app startup.
+  </Accordion>
+  <Accordion title="API calls return 401 Unauthorized">
+    JWT token expired or invalid. Implement token refresh logic in `AuthAdminService`.
+  </Accordion>
+  <Accordion title="Slow initial load">
+    Blazor WASM downloads .NET runtime and assemblies. This is normal. Use a loading screen and consider AOT compilation for production.
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Mobile App" icon="mobile" href="/apps/mobile-app">
+    Learn about the .NET MAUI customer app
+  </Card>
+  <Card title="API Reference" icon="server" href="/apps/api">
+    Explore backend API endpoints
+  </Card>
+  <Card title="User Management" icon="users" href="/features/user-management">
+    Deep dive into user roles and permissions
+  </Card>
+  <Card title="Deployment" icon="rocket" href="/guides/deployment/api-setup">
+    Deploy the admin panel to production
+  </Card>
+</CardGroup>

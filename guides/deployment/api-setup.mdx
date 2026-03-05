@@ -1,0 +1,424 @@
+---
+title: 'API Configuration & Setup'
+description: 'Step-by-step guide to configure and run the CaféIES API'
+icon: 'server'
+---
+
+## Overview
+
+The CaféIES API is built with **ASP.NET Core 9** and provides:
+- RESTful endpoints for all cafeteria operations
+- JWT-based authentication and authorization
+- SignalR hub for real-time order notifications
+- Swagger/OpenAPI documentation
+
+## Configuration
+
+### appsettings.json
+
+The API configuration is located at `CafeIES.API/appsettings.json`. You must configure this file before running the API.
+
+<Steps>
+  <Step title="Navigate to the API project">
+    ```bash
+    cd CafeIES.API
+    ```
+  </Step>
+  
+  <Step title="Open appsettings.json">
+    The default configuration looks like this:
+    
+    ```json
+    {
+      "ConnectionStrings": {
+        "DefaultConnection": "Server=localhost\\SQLEXPRESS;Database=CafeIES;Trusted_Connection=True;TrustServerCertificate=True;"
+      },
+      "Jwt": {
+        "Key":      "CAMBIA_ESTA_CLAVE_POR_UNA_DE_AL_MENOS_32_CARACTERES!",
+        "Issuer":   "CafeIES.API",
+        "Audience": "CafeIES.App"
+      },
+      "Admin": {
+        "Email":    "admin@cafeies.local",
+        "Password": "Admin1234!",
+        "Nombre":   "Administrador"
+      },
+      "Logging": {
+        "LogLevel": {
+          "Default":               "Information",
+          "Microsoft.AspNetCore":  "Warning"
+        }
+      },
+      "AllowedHosts": "*"
+    }
+    ```
+  </Step>
+</Steps>
+
+### Database Connection String
+
+Configure the SQL Server connection string based on your setup.
+
+<Tabs>
+  <Tab title="SQL Server Express">
+    ```json
+    "ConnectionStrings": {
+      "DefaultConnection": "Server=localhost\\SQLEXPRESS;Database=CafeIES;Trusted_Connection=True;TrustServerCertificate=True;"
+    }
+    ```
+    
+    Uses Windows Authentication. Make sure SQL Server Express is installed and running.
+  </Tab>
+  
+  <Tab title="LocalDB (Development)">
+    ```json
+    "ConnectionStrings": {
+      "DefaultConnection": "Server=(localdb)\\MSSQLLocalDB;Database=CafeIES;Trusted_Connection=True;TrustServerCertificate=True;"
+    }
+    ```
+    
+    Ideal for development. LocalDB is installed with Visual Studio.
+  </Tab>
+  
+  <Tab title="SQL Server with Authentication">
+    ```json
+    "ConnectionStrings": {
+      "DefaultConnection": "Server=your-server;Database=CafeIES;User Id=your-username;Password=your-password;TrustServerCertificate=True;"
+    }
+    ```
+    
+    Use SQL Server Authentication instead of Windows Authentication.
+  </Tab>
+  
+  <Tab title="Azure SQL Database">
+    ```json
+    "ConnectionStrings": {
+      "DefaultConnection": "Server=tcp:your-server.database.windows.net,1433;Database=CafeIES;User Id=your-username;Password=your-password;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;"
+    }
+    ```
+    
+    For production deployment on Azure.
+  </Tab>
+</Tabs>
+
+<Warning>
+  Never commit real connection strings with credentials to source control. Use environment variables or Azure Key Vault for production secrets.
+</Warning>
+
+### JWT Configuration
+
+JSON Web Tokens (JWT) are used for secure authentication.
+
+<Steps>
+  <Step title="Generate a secure key">
+    The JWT key must be **at least 32 characters long**. Generate a secure random key:
+    
+    ```bash
+    # Using PowerShell
+    -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 32 | ForEach-Object {[char]$_})
+    
+    # Using OpenSSL
+    openssl rand -base64 32
+    
+    # Using Node.js
+    node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+    ```
+  </Step>
+  
+  <Step title="Update JWT configuration">
+    Replace the default key in `appsettings.json`:
+    
+    ```json
+    "Jwt": {
+      "Key":      "your-generated-32-character-minimum-secret-key-here",
+      "Issuer":   "CafeIES.API",
+      "Audience": "CafeIES.App"
+    }
+    ```
+  </Step>
+</Steps>
+
+<Note>
+  The `Issuer` and `Audience` values should match across the API and any clients. These are validated during token verification.
+</Note>
+
+### Admin Account Setup
+
+The first administrator account is created automatically when the API starts.
+
+```json
+"Admin": {
+  "Email":    "admin@cafeies.local",
+  "Password": "Admin1234!",
+  "Nombre":   "Administrador"
+}
+```
+
+<Steps>
+  <Step title="Customize admin credentials">
+    Change the email and password to your preferred values:
+    
+    ```json
+    "Admin": {
+      "Email":    "admin@yourdomain.com",
+      "Password": "YourSecurePassword123!",
+      "Nombre":   "Your Name"
+    }
+    ```
+  </Step>
+  
+  <Step title="Understand auto-seeding behavior">
+    The admin account is created by `DbSeeder.cs` during the first run:
+    
+    - Checks if any admin user exists
+    - If not, creates one with the credentials from `appsettings.json`
+    - Passwords are hashed using BCrypt
+    - Only runs once (won't overwrite existing admins)
+  </Step>
+</Steps>
+
+<Warning>
+  **Security best practice:** Change the admin password immediately after first login using the Blazor Admin panel.
+</Warning>
+
+## Running the API
+
+### Using the .NET CLI
+
+<Steps>
+  <Step title="Navigate to the API project">
+    ```bash
+    cd CafeIES.API
+    ```
+  </Step>
+  
+  <Step title="Restore dependencies">
+    ```bash
+    dotnet restore
+    ```
+  </Step>
+  
+  <Step title="Run the API">
+    ```bash
+    dotnet run
+    ```
+    
+    The API will start on the configured ports (default: `https://localhost:7001`).
+  </Step>
+</Steps>
+
+Expected output:
+```
+info: Microsoft.Hosting.Lifetime[14]
+      Now listening on: https://localhost:7001
+info: Microsoft.Hosting.Lifetime[0]
+      Application started. Press Ctrl+C to shut down.
+──────────────────────────────────────────
+  ✅ Admin creado:
+     Email:    admin@cafeies.local
+     Password: Admin1234!
+  ⚠️  Cambia la contraseña tras el primer login.
+──────────────────────────────────────────
+```
+
+### Using Visual Studio
+
+<Steps>
+  <Step title="Open the solution">
+    Open `CafeIES.sln` in Visual Studio 2022.
+  </Step>
+  
+  <Step title="Set startup project">
+    Right-click on `CafeIES.API` in Solution Explorer and select **Set as Startup Project**.
+  </Step>
+  
+  <Step title="Run with F5">
+    Press `F5` or click the green play button. The API will build and launch with the debugger attached.
+  </Step>
+</Steps>
+
+### Environment-Specific Configuration
+
+For production, create `appsettings.Production.json`:
+
+```json
+{
+  "ConnectionStrings": {
+    "DefaultConnection": "your-production-connection-string"
+  },
+  "Jwt": {
+    "Key": "your-production-jwt-key-32-chars-minimum"
+  }
+}
+```
+
+Run with production settings:
+```bash
+dotnet run --environment Production
+```
+
+<Note>
+  `appsettings.Production.json` values override `appsettings.json`. Only specify the settings that differ.
+</Note>
+
+## Verify API is Running
+
+### Access Swagger UI
+
+In development mode, Swagger provides interactive API documentation:
+
+1. Navigate to: `https://localhost:7001/swagger`
+2. You should see all available endpoints organized by controller
+
+<Note>
+  Swagger is only enabled in Development environment by default. See `Program.cs:111-115` for configuration.
+</Note>
+
+### Test Authentication
+
+Test the login endpoint using curl:
+
+```bash
+curl -X POST https://localhost:7001/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "admin@cafeies.local",
+    "password": "Admin1234!"
+  }'
+```
+
+Expected response:
+```json
+{
+  "success": true,
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "refreshToken": "...",
+  "usuario": {
+    "id": 1,
+    "nombreCompleto": "Administrador",
+    "email": "admin@cafeies.local",
+    "rol": "Admin"
+  }
+}
+```
+
+## CORS Configuration
+
+The API is configured to allow requests from the Blazor Admin panel.
+
+**Default CORS policy (development):**
+```csharp
+builder.Services.AddCors(opt =>
+    opt.AddPolicy("AllowAdmin", p =>
+        p.SetIsOriginAllowed(origin =>
+                origin.StartsWith("https://localhost") ||
+                origin.StartsWith("http://localhost"))
+         .AllowAnyHeader()
+         .AllowAnyMethod()
+         .AllowCredentials()
+    )
+);
+```
+
+<Warning>
+  For production, restrict CORS to your specific domain:
+  
+  ```csharp
+  p.WithOrigins("https://admin.yourdomain.com")
+  ```
+</Warning>
+
+## SignalR Configuration
+
+Real-time notifications are handled by SignalR at `/hubs/cafeteria`.
+
+**Hub endpoint:** `https://localhost:7001/hubs/cafeteria`
+
+The hub broadcasts:
+- New orders to the admin dashboard
+- Order status updates to mobile clients
+
+<Note>
+  SignalR requires JWT authentication. The token is passed via query string for WebSocket connections (see `Program.cs:36-47`).
+</Note>
+
+## Troubleshooting
+
+### Cannot connect to database
+
+**Error:** `A network-related or instance-specific error occurred while establishing a connection to SQL Server`
+
+**Solutions:**
+1. Verify SQL Server is running:
+   ```bash
+   # Check SQL Server service status
+   sc query MSSQLSERVER
+   # Or for SQL Server Express
+   sc query MSSQL$SQLEXPRESS
+   ```
+
+2. Test connection string using SQL Server Management Studio or Azure Data Studio
+
+3. Enable TCP/IP protocol in SQL Server Configuration Manager
+
+4. Check firewall rules allow SQL Server port (default 1433)
+
+### JWT token validation fails
+
+**Error:** `IDX10503: Signature validation failed`
+
+**Solutions:**
+1. Ensure JWT key in `appsettings.json` is at least 32 characters
+2. Verify the same key is used across all services
+3. Check that token hasn't expired (default lifetime: 60 minutes)
+
+### Port already in use
+
+**Error:** `Unable to bind to https://localhost:7001`
+
+**Solutions:**
+1. Change the port in `Properties/launchSettings.json`:
+   ```json
+   "applicationUrl": "https://localhost:5001;http://localhost:5000"
+   ```
+
+2. Kill the process using the port:
+   ```bash
+   # Windows
+   netstat -ano | findstr :7001
+   taskkill /PID <process_id> /F
+   
+   # Linux/Mac
+   lsof -ti:7001 | xargs kill -9
+   ```
+
+### Swagger not accessible
+
+**Issue:** Navigating to `/swagger` returns 404
+
+**Solutions:**
+1. Ensure running in Development environment:
+   ```bash
+   dotnet run --environment Development
+   ```
+
+2. Check `Program.cs` enables Swagger:
+   ```csharp
+   if (app.Environment.IsDevelopment())
+   {
+       app.UseSwagger();
+       app.UseSwaggerUI();
+   }
+   ```
+
+## Next Steps
+
+With the API running:
+
+1. [Configure and run database migrations](/guides/deployment/database-migration)
+2. [Learn about the Blazor Admin panel](/apps/admin-panel)
+3. [Deploy the MAUI mobile app](/guides/deployment/mobile-deployment)
+
+<Note>
+  The API must be running for the mobile app and admin panel to function. Consider using Docker or systemd for production deployments.
+</Note>

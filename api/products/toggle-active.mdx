@@ -1,0 +1,79 @@
+---
+title: 'Toggle Product Active Status'
+api: 'PATCH /api/productos/{id}/toggle'
+---
+
+Toggle the active status of a product. This endpoint switches the product between active and inactive states. This endpoint is restricted to administrators only.
+
+## Authentication
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token with Admin role required.
+</ParamField>
+
+**Required Role:** Admin
+
+## Path Parameters
+
+<ParamField path="id" type="integer" required>
+  The unique identifier of the product to toggle
+</ParamField>
+
+## Response
+
+<ResponseField name="id" type="integer">
+  Product ID
+</ResponseField>
+
+<ResponseField name="activo" type="boolean">
+  New active status after toggling
+</ResponseField>
+
+## Example Request
+
+```bash
+curl -X PATCH "https://api.cafeies.com/api/productos/15/toggle" \
+  -H "Authorization: Bearer YOUR_ADMIN_TOKEN"
+```
+
+## Example Response
+
+```json
+{
+  "id": 15,
+  "activo": false
+}
+```
+
+## Response Codes
+
+<ResponseField name="200" type="OK">
+  Product status toggled successfully
+</ResponseField>
+
+<ResponseField name="401" type="Unauthorized">
+  Missing or invalid authentication token
+</ResponseField>
+
+<ResponseField name="403" type="Forbidden">
+  User does not have Admin role
+</ResponseField>
+
+<ResponseField name="404" type="Not Found">
+  Product with the specified ID does not exist
+</ResponseField>
+
+## Notes
+
+- This endpoint toggles the boolean value: `true` becomes `false` and vice versa
+- Inactive products are not shown to users by default (when `soloActivos=true` in the list endpoint)
+- This provides a soft-delete mechanism - products can be deactivated without losing data
+- Historical orders maintain references to products even if they are deactivated
+- The DELETE endpoint (`DELETE /api/productos/{id}`) internally calls this same deactivation logic rather than actually deleting the product from the database
+
+## Use Cases
+
+- **Seasonal products**: Deactivate products that are only available during certain times
+- **Out of stock**: Temporarily hide products that cannot be restocked immediately
+- **Discontinued items**: Remove products from the catalog without affecting order history
+- **Testing**: Activate/deactivate products during menu updates

@@ -1,0 +1,169 @@
+---
+title: 'Dashboard'
+api: 'GET /api/admin/dashboard'
+---
+
+Retrieves key metrics and statistics for the admin dashboard, including today's orders, revenue, product inventory status, pending student validations, and current orders in progress.
+
+## Authentication
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token with Admin role required
+</ParamField>
+
+## Response
+
+<ResponseField name="pedidosHoy" type="integer">
+  Total number of orders placed today
+</ResponseField>
+
+<ResponseField name="ingresosHoy" type="decimal">
+  Total revenue from today's orders (excludes cancelled orders)
+</ResponseField>
+
+<ResponseField name="productosActivos" type="integer">
+  Number of active products in the catalog
+</ResponseField>
+
+<ResponseField name="productosStockBajo" type="integer">
+  Number of active products with stock between 0-5 units
+</ResponseField>
+
+<ResponseField name="alumnosPendientes" type="integer">
+  Number of students awaiting account validation
+</ResponseField>
+
+<ResponseField name="pedidosEnCurso" type="array">
+  List of orders currently being processed (Pendiente or EnPreparacion status). Returns up to 10 orders ordered by creation date.
+  
+  <Expandable title="PedidoDto properties">
+    <ResponseField name="id" type="integer">
+      Order ID
+    </ResponseField>
+    
+    <ResponseField name="numeroPedido" type="integer">
+      Public order number (e.g., #042)
+    </ResponseField>
+    
+    <ResponseField name="usuarioNombre" type="string">
+      Customer's full name
+    </ResponseField>
+    
+    <ResponseField name="usuarioEmail" type="string">
+      Customer's email address
+    </ResponseField>
+    
+    <ResponseField name="fechaCreacion" type="datetime">
+      Order creation timestamp (UTC)
+    </ResponseField>
+    
+    <ResponseField name="estado" type="enum">
+      Order status: `Pendiente`, `EnPreparacion`, `Listo`, `Entregado`, or `Cancelado`
+    </ResponseField>
+    
+    <ResponseField name="metodoPago" type="enum">
+      Payment method: `Tarjeta`, `GooglePay`, or `ApplePay`
+    </ResponseField>
+    
+    <ResponseField name="total" type="decimal">
+      Total order amount
+    </ResponseField>
+    
+    <ResponseField name="notas" type="string" optional>
+      Customer notes (e.g., "sin lechuga")
+    </ResponseField>
+    
+    <ResponseField name="lineas" type="array">
+      Order line items
+      
+      <Expandable title="LineaPedidoDto properties">
+        <ResponseField name="productoId" type="integer">
+          Product ID
+        </ResponseField>
+        
+        <ResponseField name="productoNombre" type="string">
+          Product name
+        </ResponseField>
+        
+        <ResponseField name="cantidad" type="integer">
+          Quantity ordered
+        </ResponseField>
+        
+        <ResponseField name="precioUnitario" type="decimal">
+          Unit price at time of order
+        </ResponseField>
+        
+        <ResponseField name="subtotal" type="decimal">
+          Line item subtotal (cantidad × precioUnitario)
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<RequestExample>
+```bash cURL
+curl -X GET "https://api.cafeies.com/api/admin/dashboard" \
+  -H "Authorization: Bearer YOUR_ADMIN_TOKEN"
+```
+
+```javascript JavaScript
+const response = await fetch('https://api.cafeies.com/api/admin/dashboard', {
+  headers: {
+    'Authorization': 'Bearer YOUR_ADMIN_TOKEN'
+  }
+});
+const dashboard = await response.json();
+```
+</RequestExample>
+
+<ResponseExample>
+```json 200 OK
+{
+  "pedidosHoy": 42,
+  "ingresosHoy": 387.50,
+  "productosActivos": 28,
+  "productosStockBajo": 3,
+  "alumnosPendientes": 5,
+  "pedidosEnCurso": [
+    {
+      "id": 156,
+      "numeroPedido": 42,
+      "usuarioNombre": "María García",
+      "usuarioEmail": "maria.garcia@estudiante.ies.es",
+      "fechaCreacion": "2026-03-05T10:15:30Z",
+      "estado": "EnPreparacion",
+      "metodoPago": "Tarjeta",
+      "total": 8.50,
+      "notas": "Sin cebolla por favor",
+      "lineas": [
+        {
+          "productoId": 12,
+          "productoNombre": "Bocadillo de jamón",
+          "cantidad": 1,
+          "precioUnitario": 3.50,
+          "subtotal": 3.50
+        },
+        {
+          "productoId": 5,
+          "productoNombre": "Coca-Cola",
+          "cantidad": 2,
+          "precioUnitario": 2.50,
+          "subtotal": 5.00
+        }
+      ]
+    }
+  ]
+}
+```
+</ResponseExample>
+
+## Implementation Details
+
+- Revenue calculation excludes cancelled orders
+- Low stock threshold is set at 0-5 units for products with stock control enabled (Stock >= 0)
+- Orders in progress include both `Pendiente` (pending) and `EnPreparacion` (in preparation) statuses
+- Limited to 10 most recent in-progress orders, ordered by creation date
+- All timestamps are in UTC
+
+Source: `CafeIES.API/Controllers/AdminController.cs:19`

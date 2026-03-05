@@ -1,0 +1,214 @@
+---
+title: 'Create Order'
+api: 'POST /api/pedidos'
+description: 'Create a new order with products from the cafeteria catalog'
+---
+
+## Overview
+
+Creates a new order for the authenticated user. The endpoint validates:
+- Schedule constraints (user's shift must be within an active time slot)
+- Product availability and stock
+- Calculates the total price based on current product prices
+- Decrements product stock automatically
+- Sends real-time notifications to cafeteria staff via SignalR
+
+## Authentication
+
+<Warning>
+  **Required:** Bearer token (JWT)
+  
+  **Roles:** All authenticated users (Alumno, Profesor, Personal, Admin)
+</Warning>
+
+## Request Body
+
+<ParamField body="Lineas" type="array" required>
+  Array of order line items. At least one item is required.
+  
+  <ParamField body="ProductoId" type="integer" required>
+    ID of the product to order
+  </ParamField>
+  
+  <ParamField body="Cantidad" type="integer" required>
+    Quantity to order. Must be between 1 and 20.
+  </ParamField>
+</ParamField>
+
+<ParamField body="MetodoPago" type="enum" required>
+  Payment method for the order.
+  
+  **Possible values:**
+  - `0` - Tarjeta (Credit/Debit Card)
+  - `1` - GooglePay
+  - `2` - ApplePay
+</ParamField>
+
+<ParamField body="Notas" type="string" optional>
+  Optional notes for the order (e.g., "sin lechuga"). Maximum 300 characters.
+</ParamField>
+
+## Response
+
+<ResponseField name="Id" type="integer">
+  Unique identifier for the order
+</ResponseField>
+
+<ResponseField name="NumeroPedido" type="integer">
+  Sequential order number for the day (e.g., 42 displays as #042)
+</ResponseField>
+
+<ResponseField name="UsuarioNombre" type="string">
+  Full name of the user who placed the order
+</ResponseField>
+
+<ResponseField name="UsuarioEmail" type="string">
+  Email of the user who placed the order
+</ResponseField>
+
+<ResponseField name="FechaCreacion" type="datetime">
+  UTC timestamp when the order was created
+</ResponseField>
+
+<ResponseField name="Estado" type="enum">
+  Current order status:
+  - `0` - Pendiente (Pending)
+  - `1` - EnPreparacion (In Preparation)
+  - `2` - Listo (Ready)
+  - `3` - Entregado (Delivered)
+  - `4` - Cancelado (Cancelled)
+</ResponseField>
+
+<ResponseField name="MetodoPago" type="enum">
+  Payment method used (see request body for values)
+</ResponseField>
+
+<ResponseField name="Total" type="decimal">
+  Total price of the order (calculated from current product prices)
+</ResponseField>
+
+<ResponseField name="Notas" type="string">
+  Customer notes for the order
+</ResponseField>
+
+<ResponseField name="Lineas" type="array">
+  Array of order line items
+  
+  <ResponseField name="ProductoId" type="integer">
+    Product ID
+  </ResponseField>
+  
+  <ResponseField name="ProductoNombre" type="string">
+    Product name
+  </ResponseField>
+  
+  <ResponseField name="Cantidad" type="integer">
+    Quantity ordered
+  </ResponseField>
+  
+  <ResponseField name="PrecioUnitario" type="decimal">
+    Unit price at the time of purchase (frozen, won't change if product price changes)
+  </ResponseField>
+  
+  <ResponseField name="Subtotal" type="decimal">
+    Line subtotal (Cantidad × PrecioUnitario)
+  </ResponseField>
+</ResponseField>
+
+## Example Request
+
+```bash
+curl -X POST https://api.cafeies.com/api/pedidos \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "Lineas": [
+      {
+        "ProductoId": 3,
+        "Cantidad": 2
+      },
+      {
+        "ProductoId": 7,
+        "Cantidad": 1
+      }
+    ],
+    "MetodoPago": 0,
+    "Notas": "Sin lechuga en el bocadillo"
+  }'
+```
+
+## Example Response
+
+```json
+{
+  "Id": 158,
+  "NumeroPedido": 42,
+  "UsuarioNombre": "Juan Pérez",
+  "UsuarioEmail": "juan.perez@ies.example.com",
+  "FechaCreacion": "2026-03-05T10:25:30Z",
+  "Estado": 0,
+  "MetodoPago": 0,
+  "Total": 8.50,
+  "Notas": "Sin lechuga en el bocadillo",
+  "Lineas": [
+    {
+      "ProductoId": 3,
+      "ProductoNombre": "Bocadillo de jamón",
+      "Cantidad": 2,
+      "PrecioUnitario": 3.50,
+      "Subtotal": 7.00
+    },
+    {
+      "ProductoId": 7,
+      "ProductoNombre": "Coca-Cola",
+      "Cantidad": 1,
+      "PrecioUnitario": 1.50,
+      "Subtotal": 1.50
+    }
+  ]
+}
+```
+
+## Error Responses
+
+<ResponseExample>
+```json 400 - Outside ordering hours
+{
+  "mensaje": "No puedes pedir en este momento. Próxima franja: Recreo (11:00)"
+}
+```
+
+```json 400 - Product not available
+{
+  "mensaje": "Producto #3 no disponible."
+}
+```
+
+```json 400 - Insufficient stock
+{
+  "mensaje": "Stock insuficiente para 'Bocadillo de jamón'. Disponibles: 1."
+}
+```
+
+```json 401 - Unauthorized
+{
+  "type": "https://tools.ietf.org/html/rfc7235#section-3.1",
+  "title": "Unauthorized",
+  "status": 401
+}
+```
+</ResponseExample>
+
+## Business Logic
+
+1. **Schedule Validation**: Uses `HorarioService.PuedePedirAhoraAsync()` to check if the user's shift has an active ordering window
+2. **Stock Management**: Products with `Stock = -1` have unlimited stock. Otherwise, stock is validated and decremented atomically
+3. **Price Freezing**: Order line items capture the current product price at purchase time, so price changes don't affect existing orders
+4. **Order Numbering**: Sequential numbering resets daily (e.g., #001, #002, etc.)
+5. **Real-time Notifications**: Cafeteria staff connected to SignalR hub receive instant notification via `NuevoPedido` event
+
+## Related Endpoints
+
+- [Check Schedule](/api/orders/check-schedule) - Check if ordering is currently allowed
+- [My Orders](/api/orders/my-orders) - View your order history
+- [Get Products](/api/products/list) - Browse available products

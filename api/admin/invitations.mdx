@@ -1,0 +1,352 @@
+---
+title: 'Invitations'
+description: 'Generate and manage QR code invitations for professors and staff registration'
+---
+
+## List Invitations
+
+<api method="GET" path="/api/invitaciones" />
+
+Retrieve all invitation tokens ordered by creation date (most recent first).
+
+### Authentication
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token with Admin role required
+</ParamField>
+
+### Response
+
+<ResponseField name="invitations" type="array">
+  List of invitation tokens
+  
+  <Expandable title="InvitacionDto properties">
+    <ResponseField name="id" type="integer">
+      Invitation ID
+    </ResponseField>
+    
+    <ResponseField name="token" type="string">
+      Unique UUID token (32 characters, no hyphens)
+    </ResponseField>
+    
+    <ResponseField name="tipo" type="enum">
+      Invitation type: `Profesor` (1) or `Personal` (2)
+    </ResponseField>
+    
+    <ResponseField name="activa" type="boolean">
+      Whether the invitation is currently active
+    </ResponseField>
+    
+    <ResponseField name="fechaExpiracion" type="datetime">
+      Expiration date (UTC)
+    </ResponseField>
+    
+    <ResponseField name="usosMaximos" type="integer" optional>
+      Maximum number of uses allowed. Null means unlimited uses.
+    </ResponseField>
+    
+    <ResponseField name="usosActuales" type="integer">
+      Number of times this invitation has been used
+    </ResponseField>
+    
+    <ResponseField name="urlInvitacion" type="string">
+      Relative URL path for the invitation: `/registro/invitacion/{token}`
+    </ResponseField>
+    
+    <ResponseField name="esValida" type="boolean">
+      Computed validity: true if active, not expired, and within usage limits
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<RequestExample>
+```bash cURL
+curl -X GET "https://api.cafeies.com/api/invitaciones" \
+  -H "Authorization: Bearer YOUR_ADMIN_TOKEN"
+```
+</RequestExample>
+
+<ResponseExample>
+```json 200 OK
+[
+  {
+    "id": 5,
+    "token": "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6",
+    "tipo": "Profesor",
+    "activa": true,
+    "fechaExpiracion": "2026-03-12T10:30:00Z",
+    "usosMaximos": 10,
+    "usosActuales": 3,
+    "urlInvitacion": "/registro/invitacion/a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6",
+    "esValida": true
+  },
+  {
+    "id": 4,
+    "token": "x9y8z7w6v5u4t3s2r1q0p9o8n7m6l5k4",
+    "tipo": "Personal",
+    "activa": false,
+    "fechaExpiracion": "2026-03-10T08:00:00Z",
+    "usosMaximos": null,
+    "usosActuales": 0,
+    "urlInvitacion": "/registro/invitacion/x9y8z7w6v5u4t3s2r1q0p9o8n7m6l5k4",
+    "esValida": false
+  }
+]
+```
+</ResponseExample>
+
+---
+
+## Create Invitation
+
+<api method="POST" path="/api/invitaciones" />
+
+Generate a new invitation token for professor or staff registration. Automatically deactivates previous active invitations of the same type.
+
+### Authentication
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token with Admin role required
+</ParamField>
+
+### Request Body
+
+<ParamField body="tipo" type="enum" required>
+  Invitation type: `Profesor` (1) or `Personal` (2)
+</ParamField>
+
+<ParamField body="usosMaximos" type="integer" optional>
+  Maximum number of uses. If not provided or null, the invitation can be used unlimited times while active.
+</ParamField>
+
+<ParamField body="diasValidez" type="integer" default="7">
+  Number of days until expiration. Defaults to 7 days.
+</ParamField>
+
+### Response
+
+Returns the created invitation with generated token.
+
+<RequestExample>
+```bash Limited Use Invitation
+curl -X POST "https://api.cafeies.com/api/invitaciones" \
+  -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "tipo": "Profesor",
+    "usosMaximos": 5,
+    "diasValidez": 14
+  }'
+```
+
+```bash Unlimited Use Invitation
+curl -X POST "https://api.cafeies.com/api/invitaciones" \
+  -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "tipo": "Personal",
+    "diasValidez": 30
+  }'
+```
+
+```javascript JavaScript
+const response = await fetch('https://api.cafeies.com/api/invitaciones', {
+  method: 'POST',
+  headers: {
+    'Authorization': 'Bearer YOUR_ADMIN_TOKEN',
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    tipo: 'Profesor',
+    usosMaximos: 10,
+    diasValidez: 7
+  })
+});
+const invitation = await response.json();
+```
+</RequestExample>
+
+<ResponseExample>
+```json 200 OK
+{
+  "id": 6,
+  "token": "f7e8d9c0b1a2345678901234567890ab",
+  "tipo": "Profesor",
+  "activa": true,
+  "fechaExpiracion": "2026-03-19T10:30:00Z",
+  "usosMaximos": 5,
+  "usosActuales": 0,
+  "urlInvitacion": "/registro/invitacion/f7e8d9c0b1a2345678901234567890ab",
+  "esValida": true
+}
+```
+</ResponseExample>
+
+---
+
+## Get QR Code
+
+<api method="GET" path="/api/invitaciones/{id}/qr" />
+
+Generate and download a QR code image (PNG) for the invitation. The QR code encodes the full registration URL.
+
+### Authentication
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token with Admin role required
+</ParamField>
+
+### Path Parameters
+
+<ParamField path="id" type="integer" required>
+  Invitation ID
+</ParamField>
+
+### Response
+
+Returns a PNG image file with the QR code. The filename follows the pattern: `invitacion-{tipo}-{token_prefix}.png`
+
+<RequestExample>
+```bash cURL (Download)
+curl -X GET "https://api.cafeies.com/api/invitaciones/6/qr" \
+  -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
+  -o invitation-qr.png
+```
+
+```html HTML (Display)
+<img 
+  src="https://api.cafeies.com/api/invitaciones/6/qr" 
+  alt="QR Code"
+  style="width: 300px; height: 300px;"
+/>
+```
+</RequestExample>
+
+<ResponseExample>
+```text 200 OK
+Content-Type: image/png
+Content-Disposition: attachment; filename="invitacion-Profesor-f7e8d9c0.png"
+
+[PNG binary data]
+```
+
+```json 404 Not Found
+{
+  "mensaje": "Invitación no válida."
+}
+```
+</ResponseExample>
+
+---
+
+## Revoke Invitation
+
+<api method="DELETE" path="/api/invitaciones/{id}" />
+
+Revoke an invitation by setting it as inactive. The token can no longer be used for registration.
+
+### Authentication
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token with Admin role required
+</ParamField>
+
+### Path Parameters
+
+<ParamField path="id" type="integer" required>
+  Invitation ID to revoke
+</ParamField>
+
+### Response
+
+Returns `204 No Content` on success.
+
+<RequestExample>
+```bash cURL
+curl -X DELETE "https://api.cafeies.com/api/invitaciones/6" \
+  -H "Authorization: Bearer YOUR_ADMIN_TOKEN"
+```
+</RequestExample>
+
+<ResponseExample>
+```text 204 No Content
+(Empty response body)
+```
+
+```json 404 Not Found
+{
+  "mensaje": "Invitation not found"
+}
+```
+</ResponseExample>
+
+---
+
+## Validate Invitation (Public)
+
+<api method="GET" path="/api/invitaciones/validar/{token}" />
+
+Validate an invitation token without authentication. Used by the registration page to check if a token is valid before showing the registration form.
+
+### Path Parameters
+
+<ParamField path="token" type="string" required>
+  The invitation token (32-character UUID)
+</ParamField>
+
+### Response
+
+<ResponseField name="valida" type="boolean">
+  Whether the token is valid and can be used for registration
+</ResponseField>
+
+<ResponseField name="tipo" type="string" optional>
+  Invitation type ("Profesor" or "Personal"). Only present if valid.
+</ResponseField>
+
+<ResponseField name="token" type="string" optional>
+  The validated token. Only present if valid.
+</ResponseField>
+
+<ResponseField name="mensaje" type="string" optional>
+  Error message if invalid
+</ResponseField>
+
+<RequestExample>
+```bash Valid Token
+curl -X GET "https://api.cafeies.com/api/invitaciones/validar/f7e8d9c0b1a2345678901234567890ab"
+```
+
+```bash Invalid Token
+curl -X GET "https://api.cafeies.com/api/invitaciones/validar/invalid-token-123"
+```
+</RequestExample>
+
+<ResponseExample>
+```json 200 OK (Valid)
+{
+  "valida": true,
+  "tipo": "Profesor",
+  "token": "f7e8d9c0b1a2345678901234567890ab"
+}
+```
+
+```json 400 Bad Request (Invalid)
+{
+  "valida": false,
+  "mensaje": "Enlace inválido o expirado."
+}
+```
+</ResponseExample>
+
+## Implementation Notes
+
+- Creating a new invitation automatically deactivates all previous active invitations of the same type
+- Tokens are 32-character UUIDs generated without hyphens (format "N")
+- QR codes encode the full URL: `{App:BaseUrl}/registro/invitacion/{token}`
+- QR codes are generated with error correction level Q (medium-high)
+- An invitation is valid only if: `activa == true` AND `not expired` AND `(usosMaximos == null OR usosActuales < usosMaximos)`
+- The `/validar/{token}` endpoint does NOT require authentication (AllowAnonymous)
+- Each successful registration increments `usosActuales`
+
+Source: `CafeIES.API/Controllers/InvitacionesController.cs`

@@ -1,0 +1,165 @@
+---
+title: 'Check Schedule'
+api: 'GET /api/pedidos/puedo-pedir'
+description: 'Check if the authenticated user can currently place an order based on their shift schedule'
+---
+
+## Overview
+
+Checks whether the authenticated user's shift (Mañana, Tarde, or Noche) is currently within an active ordering time slot. This endpoint is typically called when the app opens the ordering screen to show or hide the ordering interface.
+
+The cafeteria uses configurable time slots (e.g., "Recreo 11:00-11:30") that restrict when students from each shift can place orders. This prevents overwhelming the cafeteria and ensures fair access.
+
+## Authentication
+
+<Warning>
+  **Required:** Bearer token (JWT)
+  
+  **Roles:** All authenticated users (Alumno, Profesor, Personal, Admin)
+</Warning>
+
+## Query Parameters
+
+This endpoint does not accept any query parameters. The user's shift is extracted from their JWT token.
+
+## Response
+
+<ResponseField name="PuedePedir" type="boolean">
+  Whether the user can currently place an order
+</ResponseField>
+
+<ResponseField name="Mensaje" type="string">
+  Human-readable message explaining the status. Examples:
+  - "Puedes realizar tu pedido" (when allowed)
+  - "No puedes pedir en este momento. Próxima franja: Recreo (11:00)" (when not allowed)
+</ResponseField>
+
+<ResponseField name="ProximaFranja" type="string" nullable>
+  Description of the next available ordering window (e.g., "Recreo"). Null if no upcoming slot today.
+</ResponseField>
+
+<ResponseField name="ProximaHora" type="string" nullable>
+  Start time of the next ordering window in HH:mm format (e.g., "11:00"). Null if no upcoming slot today.
+</ResponseField>
+
+## Example Request
+
+```bash
+curl -X GET https://api.cafeies.com/api/pedidos/puedo-pedir \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+## Example Response (Ordering Allowed)
+
+```json
+{
+  "PuedePedir": true,
+  "Mensaje": "Puedes realizar tu pedido",
+  "ProximaFranja": null,
+  "ProximaHora": null
+}
+```
+
+## Example Response (Ordering Not Allowed)
+
+```json
+{
+  "PuedePedir": false,
+  "Mensaje": "No puedes pedir en este momento. Próxima franja: Recreo (11:00)",
+  "ProximaFranja": "Recreo",
+  "ProximaHora": "11:00"
+}
+```
+
+## Example Response (No More Slots Today)
+
+```json
+{
+  "PuedePedir": false,
+  "Mensaje": "No hay más franjas de pedido disponibles hoy",
+  "ProximaFranja": null,
+  "ProximaHora": null
+}
+```
+
+## Error Responses
+
+<ResponseExample>
+```json 401 - Unauthorized
+{
+  "type": "https://tools.ietf.org/html/rfc7235#section-3.1",
+  "title": "Unauthorized",
+  "status": 401
+}
+```
+</ResponseExample>
+
+## Business Logic
+
+### Time Slot Configuration
+
+Administrators configure ordering windows in the `FranjaHoraria` table with:
+- **Turno**: Which shift this window applies to (Mañana/Tarde/Noche)
+- **Descripcion**: Human-readable name (e.g., "Recreo", "Antes de entrar")
+- **HoraInicio/HoraFin**: Time range in HH:mm format
+- **Activa**: Whether the slot is currently enabled
+
+### Validation Steps
+
+1. **User Lookup**: Get the authenticated user's shift from the JWT token
+2. **Time Slot Query**: Find active `FranjaHoraria` records matching the user's shift
+3. **Current Time Check**: Determine if current time falls within any active slot
+4. **Next Slot Calculation**: If not currently allowed, find the next upcoming slot for the user's shift
+
+### Admin Exemption
+
+Users with `Turno = null` (typically Admin role) are not subject to time restrictions and can order anytime.
+
+## UI Integration Guidelines
+
+### Mobile App Behavior
+
+```typescript
+// Example: Check if ordering is allowed when screen loads
+const checkSchedule = async () => {
+  const response = await fetch('/api/pedidos/puedo-pedir', {
+    headers: { 'Authorization': `Bearer ${token}` }
+  });
+  const data = await response.json();
+  
+  if (data.PuedePedir) {
+    showOrderingInterface();
+  } else {
+    showScheduleBanner(data.Mensaje, data.ProximaFranja, data.ProximaHora);
+  }
+};
+```
+
+### Recommended UX
+
+- **Green banner**: "Puedes realizar tu pedido" when allowed
+- **Yellow banner**: Show `Mensaje` with countdown to `ProximaHora` when not allowed but upcoming slot exists
+- **Red banner**: "No hay más franjas disponibles hoy" when no more slots
+
+## Schedule Examples
+
+### Morning Shift (Turno.Manana)
+
+- 08:00-08:30: "Antes de entrar"
+- 11:00-11:30: "Recreo"
+
+### Afternoon Shift (Turno.Tarde)
+
+- 14:00-14:30: "Antes de entrar"
+- 17:00-17:30: "Recreo"
+
+### Night Shift (Turno.Noche)
+
+- 18:00-18:30: "Antes de entrar"
+- 20:00-20:30: "Pausa"
+
+## Related Endpoints
+
+- [Create Order](/api/orders/create) - Place an order (will fail if schedule check returns false)
+- [Schedule Configuration](/configuration/time-schedules) - Learn about time slot configuration
+- [My Orders](/api/orders/my-orders) - View order history

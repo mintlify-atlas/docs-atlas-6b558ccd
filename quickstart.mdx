@@ -1,80 +1,361 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quickstart
+description: Get CaféIES up and running in minutes
 ---
 
-## Get started in three steps
+## Prerequisites
 
-Get your documentation site running locally and make your first customization.
+Before you begin, ensure you have the following installed:
 
-### Step 1: Set up your local environment
-
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
-
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
-
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
-
-## Next steps
-
-Now that you have your docs running, explore these key features:
-
-<CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+<CardGroup cols={3}>
+  <Card title=".NET 8 SDK" icon="microsoft">
+    [Download from Microsoft](https://dotnet.microsoft.com/download)
+  </Card>
+  <Card title="SQL Server" icon="database">
+    SQL Server Express or LocalDB
+  </Card>
+  <Card title="Visual Studio 2022" icon="code">
+    Version 17.8+ with MAUI and ASP.NET workloads
+  </Card>
 </CardGroup>
 
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+  For the mobile app, you'll also need either an Android emulator or iOS simulator (macOS only) configured in Visual Studio.
 </Note>
+
+## Setup Steps
+
+<Steps>
+  <Step title="Clone the Repository">
+    First, clone the CaféIES repository to your local machine:
+
+    ```bash
+    git clone https://github.com/your-org/cafeies.git
+    cd cafeies
+    ```
+
+    You should see the following project structure:
+    ```
+    CafeIES/
+    ├── CafeIES.sln
+    ├── CafeIES.API/          # Backend API
+    ├── CafeIES.Admin/        # Blazor admin panel
+    ├── CafeIES.MAUI/         # Mobile app
+    └── CafeIES.Shared/       # Shared models
+    ```
+  </Step>
+
+  <Step title="Configure the API">
+    Navigate to `CafeIES.API/appsettings.json` and update the configuration:
+
+    ```json CafeIES.API/appsettings.json
+    {
+      "ConnectionStrings": {
+        "DefaultConnection": "Server=.\\SQLEXPRESS;Database=CafeIES;Trusted_Connection=True;TrustServerCertificate=True;"
+      },
+      "Jwt": {
+        "Key":      "CHANGE_THIS_KEY_TO_AT_LEAST_32_CHARACTERS!",
+        "Issuer":   "CafeIES.API",
+        "Audience": "CafeIES.App"
+      },
+      "Admin": {
+        "Email":    "admin@cafeies.local",
+        "Password": "Admin1234!",
+        "Nombre":   "Administrador"
+      }
+    }
+    ```
+
+    <Warning>
+      **Important Security Steps:**
+      - Change the `Jwt.Key` to a random string of at least 32 characters
+      - Update the `Admin.Password` to a strong password
+      - For production, use environment variables instead of storing secrets in appsettings.json
+    </Warning>
+
+    **Configuration Explained:**
+    - `DefaultConnection`: Your SQL Server connection string
+    - `Jwt.Key`: Secret key for signing JWT tokens (keep this secure!)
+    - `Admin`: Credentials for the initial admin account (created automatically on first run)
+  </Step>
+
+  <Step title="Create the Database">
+    Open a terminal in the `CafeIES.API` directory and run Entity Framework migrations:
+
+    ```bash
+    cd CafeIES.API
+    dotnet ef migrations add InitialCreate
+    dotnet ef database update
+    ```
+
+    This will:
+    - Create the `CafeIES` database
+    - Set up all tables (Users, Products, Orders, etc.)
+    - Seed initial data:
+      - 5 default categories (Bocadillos, Ensaladas, Bebidas, Postres, Café)
+      - 6 time slots for the three shifts (Morning, Afternoon, Evening)
+
+    <Note>
+      If migrations are already present, skip the `add` command and just run `dotnet ef database update`.
+    </Note>
+  </Step>
+
+  <Step title="Start the API">
+    Run the API server:
+
+    ```bash
+    dotnet run
+    ```
+
+    You should see output like:
+    ```
+    ✅ Admin creado: admin@cafeies.local
+    ⚠️  Cambia la contraseña tras el primer login.
+    Now listening on: https://localhost:7001
+    ```
+
+    The API will:
+    - Apply any pending migrations automatically
+    - Create the admin user if it doesn't exist
+    - Start listening on `https://localhost:7001`
+
+    **Test the API:**
+    - Open `https://localhost:7001/swagger` in your browser
+    - You should see the Swagger UI with all available endpoints
+  </Step>
+
+  <Step title="Configure API Base URL (MAUI)">
+    Before running the mobile app, update the API base URL in `CafeIES.MAUI/MauiProgram.cs`:
+
+    ```csharp CafeIES.MAUI/MauiProgram.cs
+    // Update line 29-32 with your API port
+    #if ANDROID
+        var apiBase = "https://10.0.2.2:50658/";  // Change port to match your API
+    #else
+        var apiBase = "https://localhost:50658/";  // Change port to match your API
+    #endif
+    ```
+
+    <Info>
+      Android emulators use `10.0.2.2` to access the host machine's localhost. iOS simulators can use `localhost` directly.
+    </Info>
+  </Step>
+
+  <Step title="Run the Mobile App">
+    Open the solution in Visual Studio 2022:
+    1. Set `CafeIES.MAUI` as the startup project
+    2. Select your target platform (Android or iOS)
+    3. Press F5 to build and run
+
+    The app will:
+    - Launch in your emulator/simulator
+    - Show the login screen
+    - Allow you to register as a student or scan an invitation code
+
+    <Note>
+      First build may take several minutes as it downloads dependencies and builds native assets.
+    </Note>
+  </Step>
+
+  <Step title="Start the Admin Panel">
+    Open a new terminal in the `CafeIES.Admin` directory:
+
+    ```bash
+    cd CafeIES.Admin
+    dotnet run
+    ```
+
+    The admin panel will start on `https://localhost:7100`. Open it in your browser and:
+    1. Login with the admin credentials from `appsettings.json`
+    2. You'll see the dashboard with real-time order tracking
+
+    <Warning>
+      Change the default admin password immediately after first login!
+    </Warning>
+  </Step>
+</Steps>
+
+## Verify the Setup
+
+Let's test that everything is working correctly:
+
+<AccordionGroup>
+  <Accordion title="Test 1: Admin Login" icon="1">
+    1. Open the admin panel at `https://localhost:7100`
+    2. Login with:
+       - Email: `admin@cafeies.local`
+       - Password: (from your appsettings.json)
+    3. You should see the dashboard with empty statistics
+  </Accordion>
+
+  <Accordion title="Test 2: Create Products" icon="2">
+    In the admin panel:
+    1. Navigate to **Productos** in the sidebar
+    2. Click **Nuevo Producto**
+    3. Create a test product:
+       - Name: "Bocadillo de jamón"
+       - Category: Bocadillos
+       - Price: 3.50
+       - Stock: 10
+    4. Click **Guardar**
+  </Accordion>
+
+  <Accordion title="Test 3: Generate Teacher Invitation" icon="3">
+    In the admin panel:
+    1. Navigate to **Invitaciones**
+    2. Click **Generar Invitación**
+    3. Select **Profesor** as the type
+    4. Copy the generated link or scan the QR code with the mobile app
+  </Accordion>
+
+  <Accordion title="Test 4: Register on Mobile" icon="4">
+    In the mobile app:
+    1. Click **Registrarse**
+    2. Fill in your details:
+       - Name: "Test Student"
+       - Email: "student@test.com"
+       - Password: Choose a strong password
+       - Shift: Select "Mañana" (Morning)
+    3. Click **Registrar**
+    4. You'll see a message: "Cuenta pendiente de validación"
+  </Accordion>
+
+  <Accordion title="Test 5: Validate Student" icon="5">
+    In the admin panel:
+    1. Navigate to **Usuarios**
+    2. You should see the student in "Pendiente" status
+    3. Click **Validar** to approve the account
+    4. The student can now login on the mobile app
+  </Accordion>
+
+  <Accordion title="Test 6: Place an Order" icon="6">
+    <Warning>
+      Students can only order during their shift's time windows. For testing, either:
+      - Use a teacher account (no time restrictions)
+      - Modify the time slots in admin panel to include the current time
+      - Temporarily modify the `HorarioService.cs` to always return `Permitido`
+    </Warning>
+
+    In the mobile app:
+    1. Login with the validated student account
+    2. Browse products on the home page
+    3. Add an item to cart
+    4. Go to cart and click **Pagar**
+    5. Select a payment method
+    6. Confirm the order
+    7. You should see the order confirmation with order number
+  </Accordion>
+
+  <Accordion title="Test 7: Real-Time Updates" icon="7">
+    With both mobile app and admin panel open:
+    1. In the mobile app, view your order details
+    2. In the admin panel, go to **Dashboard**
+    3. You should see the order appear instantly
+    4. Change the order status to "En Preparación"
+    5. Watch the mobile app update in real-time without refresh!
+  </Accordion>
+</AccordionGroup>
+
+## Time Slots Configuration
+
+By default, CaféIES seeds these time slots:
+
+| Shift | Window 1 | Window 2 |
+|-------|----------|----------|
+| Mañana (Morning) | 07:30 - 08:00 | 11:00 - 11:30 |
+| Tarde (Afternoon) | 13:45 - 14:00 | 17:00 - 17:30 |
+| Noche (Evening) | 20:45 - 21:00 | 23:00 - 23:20 |
+
+To modify these:
+1. Go to admin panel → **Horarios**
+2. Edit any time slot directly
+3. Changes take effect immediately (no code changes needed!)
+
+<Note>
+  Teachers, staff, and admins are **not restricted** by time slots and can order anytime.
+</Note>
+
+## Common Issues
+
+<AccordionGroup>
+  <Accordion title="Database connection failed" icon="database">
+    **Symptoms:** API fails to start with database connection error
+
+    **Solutions:**
+    - Verify SQL Server is running
+    - Check the connection string in `appsettings.json`
+    - For LocalDB, use: `Server=(localdb)\\mssqllocaldb;Database=CafeIES;Trusted_Connection=True;`
+    - Test connection with SQL Server Management Studio
+  </Accordion>
+
+  <Accordion title="Mobile app can't connect to API" icon="mobile">
+    **Symptoms:** Network errors in mobile app
+
+    **Solutions:**
+    - Android: Ensure you're using `10.0.2.2` instead of `localhost`
+    - Verify the API port matches in `MauiProgram.cs`
+    - Check that API is running and accessible at the configured URL
+    - For Android, the development certificate is bypassed (line 39 in MauiProgram.cs:39)
+  </Accordion>
+
+  <Accordion title="JWT authentication fails" icon="key">
+    **Symptoms:** 401 Unauthorized errors
+
+    **Solutions:**
+    - Ensure `Jwt.Key` in appsettings.json is at least 32 characters
+    - Verify `Jwt.Issuer` and `Jwt.Audience` match in API and client
+    - Check that the token hasn't expired (default 60 minutes)
+    - Clear app data and login again
+  </Accordion>
+
+  <Accordion title="Admin user not created" icon="user-shield">
+    **Symptoms:** Can't login to admin panel
+
+    **Solutions:**
+    - Check API logs for seeding errors
+    - Verify `Admin` section in appsettings.json is correct
+    - Manually check database: `SELECT * FROM Usuarios WHERE Rol = 99`
+    - Delete the user and restart the API to recreate
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+Now that CaféIES is running, explore these topics:
+
+<CardGroup cols={2}>
+  <Card title="System Architecture" icon="diagram-project" href="/architecture">
+    Learn how the three-tier architecture works and how components communicate
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/auth/login">
+    Explore all available API endpoints and their usage
+  </Card>
+  <Card title="Mobile App" icon="mobile" href="/apps/mobile-app">
+    Learn about the cross-platform MAUI mobile application
+  </Card>
+  <Card title="Deployment" icon="rocket" href="/guides/deployment/requirements">
+    Deploy CaféIES to production with best practices
+  </Card>
+</CardGroup>
+
+## Running All Three Projects
+
+For development, you can run all three projects simultaneously:
+
+```bash
+# Terminal 1 - API
+cd CafeIES.API
+dotnet run
+
+# Terminal 2 - Admin Panel
+cd CafeIES.Admin
+dotnet run
+
+# Terminal 3 - Mobile App (or use Visual Studio F5)
+cd CafeIES.MAUI
+dotnet build -t:Run -f net8.0-android
+```
+
+<Tip>
+  Visual Studio 2022 can launch multiple projects at once. Right-click the solution → **Set Startup Projects** → **Multiple startup projects** → Set API and Admin to "Start".
+</Tip>

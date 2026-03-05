@@ -1,0 +1,143 @@
+---
+title: 'POST /api/auth/login'
+description: 'Authenticate a user and obtain access and refresh tokens'
+---
+
+## Endpoint
+
+<CodeGroup>
+```bash Method and Path
+POST /api/auth/login
+```
+</CodeGroup>
+
+## Description
+
+Authenticates a user with their email and password. Returns JWT access and refresh tokens if the credentials are valid and the account is active.
+
+**Authentication Required:** No
+
+## Request Body
+
+<ParamField body="Email" type="string" required>
+  User's email address. Must be a valid email format.
+</ParamField>
+
+<ParamField body="Password" type="string" required>
+  User's password. Minimum length of 6 characters.
+</ParamField>
+
+## Response
+
+<ResponseField name="AccessToken" type="string">
+  JWT access token valid for a short period (typically 15 minutes). Used to authenticate API requests.
+</ResponseField>
+
+<ResponseField name="RefreshToken" type="string">
+  Refresh token valid for 30 days. Used to obtain new access tokens without re-authentication.
+</ResponseField>
+
+<ResponseField name="Usuario" type="object">
+  User information object containing the authenticated user's details.
+  
+  <ResponseField name="Id" type="integer">
+    User's unique identifier.
+  </ResponseField>
+  
+  <ResponseField name="NombreCompleto" type="string">
+    User's full name.
+  </ResponseField>
+  
+  <ResponseField name="Email" type="string">
+    User's email address.
+  </ResponseField>
+  
+  <ResponseField name="Rol" type="string">
+    User's role in the system. Possible values: `Alumno` (0), `Profesor` (1), `Personal` (2), `Admin` (99).
+  </ResponseField>
+  
+  <ResponseField name="Turno" type="string | null">
+    User's assigned shift (only for students). Possible values: `Manana` (0), `Tarde` (1), `Noche` (2), or `null` for non-students.
+  </ResponseField>
+  
+  <ResponseField name="Estado" type="string">
+    Account status. Possible values: `PendienteValidacion` (0), `Activa` (1), `Suspendida` (2), `Rechazada` (3).
+  </ResponseField>
+</ResponseField>
+
+## Example Request
+
+<CodeGroup>
+```bash curl
+curl -X POST https://api.cafeies.com/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "Email": "alumno@ies.edu",
+    "Password": "securepass123"
+  }'
+```
+
+```json Request Body
+{
+  "Email": "alumno@ies.edu",
+  "Password": "securepass123"
+}
+```
+</CodeGroup>
+
+## Example Response
+
+<CodeGroup>
+```json 200 OK
+{
+  "AccessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "RefreshToken": "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6",
+  "Usuario": {
+    "Id": 42,
+    "NombreCompleto": "Juan Pérez",
+    "Email": "alumno@ies.edu",
+    "Rol": 0,
+    "Turno": 0,
+    "Estado": 1
+  }
+}
+```
+
+```json 401 Unauthorized
+{
+  "mensaje": "Credenciales incorrectas."
+}
+```
+
+```json 403 Forbidden - Pending Validation
+{
+  "type": "https://tools.ietf.org/html/rfc7231#section-6.5.3",
+  "title": "Forbidden",
+  "status": 403
+}
+```
+
+```json 403 Forbidden - Suspended/Rejected
+{
+  "type": "https://tools.ietf.org/html/rfc7231#section-6.5.3",
+  "title": "Forbidden",
+  "status": 403
+}
+```
+</CodeGroup>
+
+## Error Codes
+
+| Status Code | Description |
+|-------------|-------------|
+| 200 | Login successful, tokens returned |
+| 401 | Invalid credentials (wrong email or password) |
+| 403 | Account is pending validation, suspended, or rejected |
+| 400 | Invalid request body (validation errors) |
+
+## Notes
+
+- Emails are stored and compared in lowercase
+- The refresh token is stored in the database and expires after 30 days
+- Users with `PendienteValidacion`, `Suspendida`, or `Rechazada` account status cannot login
+- The access token should be included in the `Authorization` header as `Bearer {token}` for subsequent API requests

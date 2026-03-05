@@ -1,0 +1,167 @@
+---
+title: Managing Users
+description: Learn how to validate student registrations, manage user accounts, and control access to the CaféIES system
+---
+
+The Users page is your central hub for managing all CaféIES accounts. You can validate new student registrations, suspend or reactivate accounts, and view user information organized by role.
+
+## Viewing the User List
+
+The Users page displays all system users in a searchable table with the following information:
+
+- **User details**: Full name and email address
+- **Role**: Student (🎓 Alumno), Teacher (👨‍🏫 Profesor), Staff (🏢 Personal), or Admin (👑 Admin)
+- **Shift**: Assigned time shift (Morning 🌅, Afternoon 🌤️, or Night 🌙) - applies to students only
+- **Status**: Account state (Active, Pending, Suspended, or Rejected)
+
+### Filtering Users
+
+You can filter the user list to find specific accounts:
+
+<Steps>
+  <Step title="Search by name or email">
+    Use the search box at the top of the page to filter users by their name or email address. The search updates in real-time as you type.
+  </Step>
+  
+  <Step title="Filter by role">
+    Use the role dropdown to show only users with a specific role (Students, Teachers, Staff, or Admins).
+  </Step>
+</Steps>
+
+## Validating Student Registrations
+
+When students register for CaféIES, their accounts require admin validation before they can place orders. Pending validations appear in a highlighted alert section at the top of the Users page.
+
+<Note>
+  The alert section shows a red badge with the number of students awaiting validation.
+</Note>
+
+### Approving a Student
+
+<Steps>
+  <Step title="Review pending students">
+    Pending students appear in cards at the top of the page, displaying:
+    - Student's full name
+    - Email address
+    - Assigned shift (Mañana, Tarde, or Noche)
+  </Step>
+  
+  <Step title="Verify student information">
+    Check that the student's name, email, and shift assignment are correct and correspond to a valid student in your school.
+  </Step>
+  
+  <Step title="Click the Approve button">
+    Click the green **✓ Aprobar** button on the student's card.
+  </Step>
+  
+  <Step title="Confirmation">
+    The student immediately moves from the pending section to the main user table with an "Active" status. They can now log in and place orders during their assigned shift's time windows.
+  </Step>
+</Steps>
+
+### Rejecting a Student
+
+If a registration appears fraudulent or uses incorrect information:
+
+<Steps>
+  <Step title="Click the Reject button">
+    Click the red **✕ Rechazar** button on the student's pending card.
+  </Step>
+  
+  <Step title="Confirmation">
+    The account is marked as "Rejected" and moves to the main user table. The student cannot log in with a rejected account.
+  </Step>
+</Steps>
+
+<Warning>
+  Rejected students will need to register again with correct information. There is no way to convert a rejected account back to pending - you must approve a new registration.
+</Warning>
+
+## Suspending User Accounts
+
+You can temporarily suspend any non-admin user account to prevent them from accessing the system.
+
+<Steps>
+  <Step title="Locate the user">
+    Find the user in the main table using search or filters.
+  </Step>
+  
+  <Step title="Click the Suspend button">
+    In the Actions column, click the **🔒** (lock) icon button.
+  </Step>
+  
+  <Step title="Account suspended">
+    The user's status changes to "Suspended" and appears with a gray status pill. They cannot log in until you reactivate their account.
+  </Step>
+</Steps>
+
+<Note>
+  The suspend button only appears for users with "Active" status. Admin accounts cannot be suspended.
+</Note>
+
+### Common Reasons to Suspend Accounts
+
+- Student has graduated or transferred to another school
+- Account shows suspicious ordering behavior
+- Teacher or staff member is on extended leave
+- Temporary access revocation during investigation
+
+## Reactivating Accounts
+
+Suspended or rejected accounts can be reactivated:
+
+<Steps>
+  <Step title="Find the suspended/rejected user">
+    Locate the user with "Suspended" or "Rejected" status in the table.
+  </Step>
+  
+  <Step title="Click the Reactivate button">
+    In the Actions column, click the green **✅** (checkmark) icon button.
+  </Step>
+  
+  <Step title="Account restored">
+    The user's status changes to "Active" and they can immediately log in and use the system.
+  </Step>
+</Steps>
+
+## Understanding User Roles
+
+CaféIES uses four user roles with different permissions:
+
+| Role | Icon | Access | Shift Restriction |
+|------|------|--------|------------------|
+| **Alumno** (Student) | 🎓 | Can place orders during assigned shift windows | Yes - assigned to Mañana, Tarde, or Noche |
+| **Profesor** (Teacher) | 👨‍🏫 | Can place orders at any time | No - unrestricted access |
+| **Personal** (Staff) | 🏢 | Can place orders at any time | No - unrestricted access |
+| **Admin** | 👑 | Full system management access + order placement | No - unrestricted access |
+
+<Warning>
+  User roles cannot be changed through the admin interface. Teachers and staff must register using invitation links (see [Generating Invitations](/guides/admin/generating-invitations)). Students always register with the Alumno role.
+</Warning>
+
+## Understanding Account States
+
+Accounts can be in one of four states:
+
+- **Active** (green): User can log in and use the system normally
+- **Pending** (yellow): Student awaiting admin validation
+- **Suspended** (gray): Account temporarily disabled by admin
+- **Rejected** (gray): Student registration was rejected during validation
+
+## Best Practices
+
+<Card title="Validate Regularly" icon="clock">
+  Check for pending student validations daily, especially at the start of the school year when many students register.
+</Card>
+
+<Card title="Verify Before Approving" icon="shield-check">
+  Cross-reference student names and emails with your school's official enrollment records before approving registrations.
+</Card>
+
+<Card title="Document Suspensions" icon="file-text">
+  Keep a separate record of why accounts were suspended, as the system does not store suspension reasons.
+</Card>
+
+<Card title="Monitor Role Distribution" icon="users">
+  Use the role filter to periodically review the distribution of users across roles and ensure no unauthorized admin accounts exist.
+</Card>

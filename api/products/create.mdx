@@ -1,0 +1,151 @@
+---
+title: 'Create Product'
+api: 'POST /api/productos'
+---
+
+Create a new product in the cafeteria catalog. This endpoint is restricted to administrators only.
+
+## Authentication
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token with Admin role required.
+</ParamField>
+
+**Required Role:** Admin
+
+## Request Body
+
+<ParamField body="nombre" type="string" required>
+  Product name (max 120 characters)
+</ParamField>
+
+<ParamField body="descripcion" type="string">
+  Product description (max 300 characters)
+</ParamField>
+
+<ParamField body="precio" type="decimal" required>
+  Product price in euros (format: decimal(6,2))
+</ParamField>
+
+<ParamField body="stock" type="integer">
+  Initial stock quantity. Use `-1` for unlimited/no stock control. Defaults to `-1` if not provided.
+</ParamField>
+
+<ParamField body="categoriaId" type="integer" required>
+  ID of the category this product belongs to. Must be a valid existing category.
+</ParamField>
+
+<ParamField body="imagenUrl" type="string" nullable>
+  URL or path to the product image (max 500 characters)
+</ParamField>
+
+## Response
+
+<ResponseField name="id" type="integer">
+  Unique identifier for the newly created product
+</ResponseField>
+
+<ResponseField name="nombre" type="string">
+  Product name
+</ResponseField>
+
+<ResponseField name="descripcion" type="string">
+  Product description
+</ResponseField>
+
+<ResponseField name="precio" type="decimal">
+  Product price
+</ResponseField>
+
+<ResponseField name="stock" type="integer">
+  Available units
+</ResponseField>
+
+<ResponseField name="imagenUrl" type="string" nullable>
+  Product image URL
+</ResponseField>
+
+<ResponseField name="activo" type="boolean">
+  Always `true` for newly created products
+</ResponseField>
+
+<ResponseField name="nivelStock" type="string">
+  Stock level indicator
+</ResponseField>
+
+<ResponseField name="categoriaId" type="integer">
+  Category ID
+</ResponseField>
+
+<ResponseField name="categoriaNombre" type="string">
+  Category name
+</ResponseField>
+
+<ResponseField name="categoriaEmoji" type="string">
+  Category emoji
+</ResponseField>
+
+## Example Request
+
+```bash
+curl -X POST "https://api.cafeies.com/api/productos" \
+  -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "nombre": "Café con Leche",
+    "descripcion": "Café con leche grande",
+    "precio": 1.50,
+    "stock": -1,
+    "categoriaId": 2,
+    "imagenUrl": "/images/productos/cafe-leche.jpg"
+  }'
+```
+
+## Example Response
+
+```json
+{
+  "id": 15,
+  "nombre": "Café con Leche",
+  "descripcion": "Café con leche grande",
+  "precio": 1.50,
+  "stock": -1,
+  "imagenUrl": "/images/productos/cafe-leche.jpg",
+  "activo": true,
+  "nivelStock": "ok",
+  "categoriaId": 2,
+  "categoriaNombre": "Bebidas",
+  "categoriaEmoji": "☕"
+}
+```
+
+## Response Codes
+
+<ResponseField name="201" type="Created">
+  Product created successfully. Includes `Location` header with the URL to fetch the created product.
+</ResponseField>
+
+<ResponseField name="400" type="Bad Request">
+  Invalid request body or invalid category ID
+  
+  ```json
+  {
+    "mensaje": "Categoría no válida."
+  }
+  ```
+</ResponseField>
+
+<ResponseField name="401" type="Unauthorized">
+  Missing or invalid authentication token
+</ResponseField>
+
+<ResponseField name="403" type="Forbidden">
+  User does not have Admin role
+</ResponseField>
+
+## Notes
+
+- All newly created products are automatically set to `activo: true`
+- The `categoriaId` must reference an existing category in the database
+- Stock value of `-1` indicates unlimited stock (no stock control)
+- The response includes the full product details with populated category information

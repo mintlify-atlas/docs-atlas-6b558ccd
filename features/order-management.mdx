@@ -1,0 +1,525 @@
+---
+title: Order Management
+description: Complete order lifecycle from creation to delivery with real-time stock management
+icon: receipt
+---
+
+## Overview
+
+CaféIES provides a comprehensive order management system that handles the complete order lifecycle, from creation with stock validation through delivery tracking, with real-time notifications at every stage.
+
+## Order Lifecycle
+
+Orders progress through five distinct states:
+
+```csharp CafeIES.Shared/Models/Enums.cs
+public enum EstadoPedido
+{
+    Pendiente     = 0,  // Pagado, esperando que la cafetería lo vea
+    EnPreparacion = 1,  // La cafetería está preparando el pedido
+    Listo         = 2,  // El pedido está en el mostrador para recoger
+    Entregado     = 3,  // El alumno ha recogido el pedido
+    Cancelado     = 4   // Cancelado (por el usuario o por el admin)
+}
+```
+
+<Steps>
+  <Step title="Pendiente">
+    Order is created and payment is processed. Cafeteria staff receives real-time notification.
+  </Step>
+  
+  <Step title="En Preparación">
+    Staff marks the order as being prepared. Customer can see progress in the app.
+  </Step>
+  
+  <Step title="Listo">
+    Order is ready for pickup. Customer receives notification to collect their order.
+  </Step>
+  
+  <Step title="Entregado">
+    Customer has collected the order. Transaction is complete.
+  </Step>
+</Steps>
+
+## Data Models
+
+### Pedido (Order)
+
+The main order entity contains all order information:
+
+```csharp CafeIES.Shared/Models/Entities.cs
+public class Pedido
+{
+    public int Id { get; set; }
+
+    /// <summary>Número de pedido visible para el usuario y la cafetería (ej: #042).</summary>
+    public int NumeroPedido { get; set; }
+
+    public int UsuarioId { get; set; }
+    public Usuario Usuario { get; set; } = null!;
+
+    public DateTime FechaCreacion { get; set; } = DateTime.UtcNow;
+
+    public EstadoPedido Estado { get; set; } = EstadoPedido.Pendiente;
+
+    public MetodoPago MetodoPago { get; set; }
+
+    [Column(TypeName = "decimal(8,2)")]
+    public decimal Total { get; set; }
+
+    /// <summary>Notas del cliente (ej: "sin lechuga").</summary>
+    [MaxLength(300)]
+    public string? Notas { get; set; }
+
+    /// <summary>Referencia del pago en la pasarela (Stripe, Redsys...).</summary>
+    [MaxLength(200)]
+    public string? ReferenciasPago { get; set; }
+
+    // Navegación
+    public ICollection<LineaPedido> Lineas { get; set; } = new List<LineaPedido>();
+}
+```
+
+<Note>
+Each order has a daily sequential `NumeroPedido` (e.g., #1, #2, #3) that resets each day for easy identification.
+</Note>
+
+### LineaPedido (Order Line)
+
+Each product in an order is represented by a line item:
+
+```csharp CafeIES.Shared/Models/Entities.cs
+public class LineaPedido
+{
+    public int Id { get; set; }
+
+    public int PedidoId { get; set; }
+    public Pedido Pedido { get; set; } = null!;
+
+    public int ProductoId { get; set; }
+    public Producto Producto { get; set; } = null!;
+
+    public int Cantidad { get; set; }
+
+    /// <summary>Precio en el momento de la compra (no varía aunque cambie el producto).</summary>
+    [Column(TypeName = "decimal(6,2)")]
+    public decimal PrecioUnitario { get; set; }
+
+    [NotMapped]
+    public decimal Subtotal => Cantidad * PrecioUnitario;
+}
+```
+
+<Warning>
+Prices are captured at the time of purchase (`PrecioUnitario`) and remain fixed even if the product price changes later.
+</Warning>
+
+## Creating Orders
+
+The order creation endpoint performs comprehensive validation:
+
+```csharp CafeIES.API/Controllers/PedidosController.cs
+[HttpPost]
+public async Task<ActionResult<PedidoDto>> Crear([FromBody] CrearPedidoRequest req)
+{
+    var userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
+
+    // 1. Comprobar horario
+    var horario = await _horario.PuedePedirAhoraAsync(userId);
+    if (!horario.Puede)
+        return BadRequest(new { mensaje = horario.Mensaje });
+
+    // 2. Calcular total y validar stock
+    var lineas = new List<LineaPedido>();
+    decimal total = 0;
+
+    foreach (var l in req.Lineas)
+    {
+        var producto = await _db.Productos.FindAsync(l.ProductoId);
+        if (producto is null || !producto.Activo)
+            return BadRequest(new { mensaje = $"Producto #{l.ProductoId} no disponible." });
+
+        if (producto.Stock != -1 && producto.Stock < l.Cantidad)
+            return BadRequest(new { mensaje = $"Stock insuficiente para '{producto.Nombre}'. Disponibles: {producto.Stock}." });
+
+        lineas.Add(new LineaPedido
+        {
+            ProductoId     = l.ProductoId,
+            Cantidad       = l.Cantidad,
+            PrecioUnitario = producto.Precio
+        });
+        total += producto.Precio * l.Cantidad;
+    }
+
+    // 3. Número de pedido secuencial del día
+    var hoy = DateTime.UtcNow.Date;
+    var ultimoNumero = await _db.Pedidos
+        .Where(p => p.FechaCreacion.Date == hoy)
+        .MaxAsync(p => (int?)p.NumeroPedido) ?? 0;
+
+    var pedido = new Pedido
+    {
+        UsuarioId    = userId,
+        NumeroPedido = ultimoNumero + 1,
+        MetodoPago   = req.MetodoPago,
+        Total        = total,
+        Notas        = req.Notas,
+        Lineas       = lineas
+    };
+
+    _db.Pedidos.Add(pedido);
+
+    // 4. Decrementar stock
+    foreach (var l in req.Lineas)
+    {
+        var prod = await _db.Productos.FindAsync(l.ProductoId);
+        if (prod!.Stock != -1) prod.Stock -= l.Cantidad;
+    }
+
+    await _db.SaveChangesAsync();
+
+    // 5. Notificar a la cafetería en tiempo real vía SignalR
+    var dto = await GetPedidoDtoAsync(pedido.Id);
+    await _hub.Clients.Group("cafeteria").SendAsync("NuevoPedido", dto);
+
+    return CreatedAtAction(nameof(GetById), new { id = pedido.Id }, dto);
+}
+```
+
+### Request DTOs
+
+```csharp CafeIES.Shared/Models/DTOs.cs
+public record CrearPedidoRequest(
+    [Required, MinLength(1)] List<LineaPedidoRequest> Lineas,
+    MetodoPago MetodoPago,
+    string? Notas
+);
+
+public record LineaPedidoRequest(
+    [Required] int ProductoId,
+    [Required, Range(1, 20)] int Cantidad
+);
+```
+
+## Validation Steps
+
+<Accordion title="1. Schedule Validation">
+The system checks if the user's shift allows ordering at the current time:
+
+```csharp
+var horario = await _horario.PuedePedirAhoraAsync(userId);
+if (!horario.Puede)
+    return BadRequest(new { mensaje = horario.Mensaje });
+```
+
+See [Schedule Restrictions](/features/schedule-restrictions) for details.
+</Accordion>
+
+<Accordion title="2. Product & Stock Validation">
+Each product is validated:
+- Product exists and is active
+- Sufficient stock is available (if stock control is enabled)
+- Price is captured at purchase time
+
+```csharp
+if (producto.Stock != -1 && producto.Stock < l.Cantidad)
+    return BadRequest(new { 
+        mensaje = $"Stock insuficiente para '{producto.Nombre}'. Disponibles: {producto.Stock}." 
+    });
+```
+</Accordion>
+
+<Accordion title="3. Order Number Assignment">
+Each day gets sequential order numbers starting from 1:
+
+```csharp
+var hoy = DateTime.UtcNow.Date;
+var ultimoNumero = await _db.Pedidos
+    .Where(p => p.FechaCreacion.Date == hoy)
+    .MaxAsync(p => (int?)p.NumeroPedido) ?? 0;
+
+var pedido = new Pedido
+{
+    NumeroPedido = ultimoNumero + 1,
+    // ...
+};
+```
+</Accordion>
+
+<Accordion title="4. Automatic Stock Deduction">
+Stock is automatically decremented when the order is confirmed:
+
+```csharp
+foreach (var l in req.Lineas)
+{
+    var prod = await _db.Productos.FindAsync(l.ProductoId);
+    if (prod!.Stock != -1) prod.Stock -= l.Cantidad;
+}
+```
+
+Products with `Stock = -1` have unlimited stock and are not decremented.
+</Accordion>
+
+## Stock Management
+
+### Product Stock Model
+
+```csharp CafeIES.Shared/Models/Entities.cs
+public class Producto
+{
+    public int Id { get; set; }
+
+    [Required, MaxLength(120)]
+    public string Nombre { get; set; } = string.Empty;
+
+    [Column(TypeName = "decimal(6,2)")]
+    public decimal Precio { get; set; }
+
+    /// <summary>Unidades disponibles. -1 = sin control de stock.</summary>
+    public int Stock { get; set; } = -1;
+
+    public bool Activo { get; set; } = true;
+
+    /// <summary>Nivel de stock: "ok" / "bajo" / "agotado"</summary>
+    [NotMapped]
+    public string NivelStock => Stock switch
+    {
+        -1 => "ok",
+        0  => "agotado",
+        <= 5 => "bajo",
+        _  => "ok"
+    };
+}
+```
+
+<CardGroup cols={3}>
+  <Card title="Unlimited Stock" icon="infinity">
+    `Stock = -1`
+    
+    No stock tracking. Always available.
+  </Card>
+  
+  <Card title="Low Stock" icon="triangle-exclamation" color="#f59e0b">
+    `Stock ≤ 5`
+    
+    Warning displayed to admins.
+  </Card>
+  
+  <Card title="Out of Stock" icon="circle-xmark" color="#ef4444">
+    `Stock = 0`
+    
+    Cannot be ordered until restocked.
+  </Card>
+</CardGroup>
+
+### Manual Stock Updates
+
+Admins can manually update stock levels:
+
+```csharp CafeIES.API/Controllers/ProductosController.cs
+[HttpPatch("{id}/stock")]
+[Authorize(Roles = "Admin")]
+public async Task<ActionResult> ActualizarStock(int id, [FromBody] ActualizarStockRequest req)
+{
+    var producto = await _db.Productos.FindAsync(id);
+    if (producto is null) return NotFound();
+
+    producto.Stock = req.NuevoStock;
+    await _db.SaveChangesAsync();
+
+    return NoContent();
+}
+```
+
+## Changing Order State
+
+Cafeteria staff can update order status:
+
+```csharp CafeIES.API/Controllers/PedidosController.cs
+[HttpPatch("{id}/estado")]
+[Authorize(Roles = "Admin,Personal")]
+public async Task<ActionResult> CambiarEstado(int id, [FromBody] CambiarEstadoRequest req)
+{
+    var pedido = await _db.Pedidos.FindAsync(id);
+    if (pedido is null) return NotFound();
+
+    pedido.Estado = req.NuevoEstado;
+    await _db.SaveChangesAsync();
+
+    // Notificar al usuario propietario del pedido
+    await _hub.Clients.Group($"user-{pedido.UsuarioId}")
+        .SendAsync("EstadoPedidoActualizado", new { 
+            pedido.Id, 
+            Estado = req.NuevoEstado.ToString() 
+        });
+
+    return NoContent();
+}
+```
+
+<Note>
+When an order state changes, the customer receives a real-time notification via SignalR. See [Real-Time Updates](/features/real-time-updates) for details.
+</Note>
+
+## Retrieving Orders
+
+### User's Own Orders
+
+Customers can view their recent orders:
+
+```csharp CafeIES.API/Controllers/PedidosController.cs
+[HttpGet("mis-pedidos")]
+public async Task<ActionResult<List<PedidoDto>>> MisPedidos()
+{
+    var userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
+    var pedidos = await _db.Pedidos
+        .Where(p => p.UsuarioId == userId)
+        .OrderByDescending(p => p.FechaCreacion)
+        .Take(20)
+        .Include(p => p.Lineas).ThenInclude(l => l.Producto)
+        .Include(p => p.Usuario)
+        .ToListAsync();
+
+    return Ok(pedidos.Select(MapDto).ToList());
+}
+```
+
+### Active Orders (Staff View)
+
+Cafeteria staff can see all in-progress orders:
+
+```csharp CafeIES.API/Controllers/PedidosController.cs
+[HttpGet("en-curso")]
+[Authorize(Roles = "Admin,Personal")]
+public async Task<ActionResult<List<PedidoDto>>> EnCurso()
+{
+    var pedidos = await _db.Pedidos
+        .Where(p => p.Estado == EstadoPedido.Pendiente || p.Estado == EstadoPedido.EnPreparacion)
+        .OrderBy(p => p.FechaCreacion)
+        .Include(p => p.Lineas).ThenInclude(l => l.Producto)
+        .Include(p => p.Usuario)
+        .ToListAsync();
+
+    return Ok(pedidos.Select(MapDto).ToList());
+}
+```
+
+### Admin Historical View
+
+Admins can query all orders with filters:
+
+```csharp CafeIES.API/Controllers/AdminController.cs
+[HttpGet("pedidos")]
+public async Task<ActionResult<List<PedidoDto>>> GetPedidos(
+    [FromQuery] DateTime? desde,
+    [FromQuery] DateTime? hasta,
+    [FromQuery] EstadoPedido? estado)
+{
+    var query = _db.Pedidos
+        .Include(p => p.Lineas).ThenInclude(l => l.Producto)
+        .Include(p => p.Usuario)
+        .AsQueryable();
+
+    if (desde.HasValue)  query = query.Where(p => p.FechaCreacion >= desde);
+    if (hasta.HasValue)  query = query.Where(p => p.FechaCreacion <= hasta);
+    if (estado.HasValue) query = query.Where(p => p.Estado == estado);
+
+    var pedidos = await query.OrderByDescending(p => p.FechaCreacion).Take(200).ToListAsync();
+    return Ok(pedidos.Select(MapPedidoDto).ToList());
+}
+```
+
+## Response DTOs
+
+```csharp CafeIES.Shared/Models/DTOs.cs
+public record PedidoDto(
+    int           Id,
+    int           NumeroPedido,
+    string        UsuarioNombre,
+    string        UsuarioEmail,
+    DateTime      FechaCreacion,
+    EstadoPedido  Estado,
+    MetodoPago    MetodoPago,
+    decimal       Total,
+    string?       Notas,
+    List<LineaPedidoDto> Lineas
+);
+
+public record LineaPedidoDto(
+    int     ProductoId,
+    string  ProductoNombre,
+    int     Cantidad,
+    decimal PrecioUnitario,
+    decimal Subtotal
+);
+```
+
+## Payment Methods
+
+The system supports multiple payment methods:
+
+```csharp CafeIES.Shared/Models/Enums.cs
+public enum MetodoPago
+{
+    Tarjeta    = 0,
+    GooglePay  = 1,
+    ApplePay   = 2
+}
+```
+
+<Note>
+Payment processing is handled client-side. The API stores the `ReferenciasPago` field for payment gateway references.
+</Note>
+
+## API Endpoints Summary
+
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/api/pedidos` | POST | User | Create new order |
+| `/api/pedidos/puedo-pedir` | GET | User | Check if user can order now |
+| `/api/pedidos/mis-pedidos` | GET | User | Get user's recent orders |
+| `/api/pedidos/{id}` | GET | User | Get order details |
+| `/api/pedidos/{id}/estado` | PATCH | Staff/Admin | Update order state |
+| `/api/pedidos/en-curso` | GET | Staff/Admin | Get active orders |
+| `/api/admin/pedidos` | GET | Admin | Get all orders with filters |
+| `/api/productos/{id}/stock` | PATCH | Admin | Update product stock |
+
+## Dashboard Statistics
+
+The admin dashboard shows order metrics:
+
+```csharp CafeIES.API/Controllers/AdminController.cs
+[HttpGet("dashboard")]
+public async Task<ActionResult<DashboardDto>> Dashboard()
+{
+    var hoy = DateTime.UtcNow.Date;
+
+    var pedidosHoy    = await _db.Pedidos.CountAsync(p => p.FechaCreacion.Date == hoy);
+    var ingresosHoy   = await _db.Pedidos
+        .Where(p => p.FechaCreacion.Date == hoy && p.Estado != EstadoPedido.Cancelado)
+        .SumAsync(p => (decimal?)p.Total) ?? 0;
+    var productosStockBajo = await _db.Productos
+        .CountAsync(p => p.Activo && p.Stock >= 0 && p.Stock <= 5);
+
+    return Ok(new DashboardDto(
+        pedidosHoy, 
+        ingresosHoy,
+        productosActivos, 
+        productosStockBajo,
+        alumnosPendientes,
+        pedidosEnCurso
+    ));
+}
+```
+
+## Related Features
+
+<CardGroup cols={2}>
+  <Card title="Real-Time Updates" icon="bolt" href="/features/real-time-updates">
+    Learn how SignalR delivers instant order notifications
+  </Card>
+  
+  <Card title="Schedule Restrictions" icon="clock" href="/features/schedule-restrictions">
+    Understand time-based ordering controls
+  </Card>
+</CardGroup>

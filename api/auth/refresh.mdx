@@ -1,0 +1,148 @@
+---
+title: 'POST /api/auth/refresh'
+description: 'Obtain new access and refresh tokens using a valid refresh token'
+---
+
+## Endpoint
+
+<CodeGroup>
+```bash Method and Path
+POST /api/auth/refresh
+```
+</CodeGroup>
+
+## Description
+
+Obtains a new pair of access and refresh tokens using a valid refresh token. This endpoint is used when the access token expires to maintain the user's authenticated session without requiring them to log in again.
+
+**Authentication Required:** No (but requires a valid refresh token)
+
+## Request Body
+
+<ParamField body="RefreshToken" type="string" required>
+  The refresh token obtained from a previous login or refresh operation.
+</ParamField>
+
+## Response
+
+<ResponseField name="AccessToken" type="string">
+  New JWT access token valid for a short period (typically 15 minutes). Used to authenticate API requests.
+</ResponseField>
+
+<ResponseField name="RefreshToken" type="string">
+  New refresh token valid for 30 days. The old refresh token is invalidated and replaced by this new one.
+</ResponseField>
+
+<ResponseField name="Usuario" type="object">
+  User information object containing the current user's details.
+  
+  <ResponseField name="Id" type="integer">
+    User's unique identifier.
+  </ResponseField>
+  
+  <ResponseField name="NombreCompleto" type="string">
+    User's full name.
+  </ResponseField>
+  
+  <ResponseField name="Email" type="string">
+    User's email address.
+  </ResponseField>
+  
+  <ResponseField name="Rol" type="string">
+    User's role in the system. Possible values: `Alumno` (0), `Profesor` (1), `Personal` (2), `Admin` (99).
+  </ResponseField>
+  
+  <ResponseField name="Turno" type="string | null">
+    User's assigned shift (only for students). Possible values: `Manana` (0), `Tarde` (1), `Noche` (2), or `null` for non-students.
+  </ResponseField>
+  
+  <ResponseField name="Estado" type="string">
+    Account status. Possible values: `PendienteValidacion` (0), `Activa` (1), `Suspendida` (2), `Rechazada` (3).
+  </ResponseField>
+</ResponseField>
+
+## Example Request
+
+<CodeGroup>
+```bash curl
+curl -X POST https://api.cafeies.com/api/auth/refresh \
+  -H "Content-Type: application/json" \
+  -d '{
+    "RefreshToken": "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6"
+  }'
+```
+
+```json Request Body
+{
+  "RefreshToken": "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6"
+}
+```
+</CodeGroup>
+
+## Example Response
+
+<CodeGroup>
+```json 200 OK
+{
+  "AccessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "RefreshToken": "z9y8x7w6v5u4t3s2r1q0p9o8n7m6l5k4",
+  "Usuario": {
+    "Id": 42,
+    "NombreCompleto": "Juan Pérez",
+    "Email": "alumno@ies.edu",
+    "Rol": 0,
+    "Turno": 0,
+    "Estado": 1
+  }
+}
+```
+
+```json 401 Unauthorized
+{
+  "mensaje": "Refresh token inválido o expirado."
+}
+```
+
+```json 400 Bad Request
+{
+  "type": "https://tools.ietf.org/html/rfc7231#section-6.5.1",
+  "title": "One or more validation errors occurred.",
+  "status": 400,
+  "errors": {
+    "RefreshToken": [
+      "The RefreshToken field is required."
+    ]
+  }
+}
+```
+</CodeGroup>
+
+## Error Codes
+
+| Status Code | Description |
+|-------------|-------------|
+| 200 | Token refresh successful, new tokens returned |
+| 401 | Invalid or expired refresh token |
+| 400 | Missing or invalid request body |
+
+## Notes
+
+- The refresh token must match one stored in the database and must not be expired
+- Each refresh operation generates a completely new pair of tokens
+- The old refresh token is replaced in the database and becomes invalid
+- Refresh tokens expire after 30 days from the time they are generated
+- The new refresh token's expiration is set to 30 days from the current refresh operation
+- This endpoint allows clients to maintain long-lived sessions without storing passwords
+- If the refresh token is expired or invalid, the user must log in again using their credentials
+
+## Token Rotation Strategy
+
+This API implements a token rotation strategy for enhanced security:
+
+1. When a user logs in, they receive both an access token and a refresh token
+2. The access token expires quickly (typically 15 minutes)
+3. Before the access token expires, the client uses the refresh token to obtain a new pair
+4. The old refresh token is invalidated and replaced with a new one
+5. This rotation continues until the user logs out or doesn't refresh for 30 days
+
+This approach provides a good balance between security and user experience.

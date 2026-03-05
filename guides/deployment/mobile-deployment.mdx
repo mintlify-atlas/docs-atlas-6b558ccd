@@ -1,0 +1,563 @@
+---
+title: 'Mobile App Deployment'
+description: 'Build and deploy the CaféIES MAUI mobile app to Android and iOS'
+icon: 'mobile'
+---
+
+## Overview
+
+The CaféIES mobile app is built with **.NET MAUI** (Multi-platform App UI), targeting:
+- **Android** (API 21+)
+- **iOS** (iOS 13+)
+- **Windows** (10.0.19041+)
+
+**Project:** `CafeIES.MAUI.csproj`
+**Frameworks:** `net9.0-android`, `net9.0-ios`, `net9.0-windows10.0.19041.0`
+
+## Prerequisites
+
+Before building the mobile app:
+
+<Steps>
+  <Step title="Install .NET 9 SDK">
+    Download from [dotnet.microsoft.com](https://dotnet.microsoft.com/download/dotnet/9.0)
+  </Step>
+  
+  <Step title="Install MAUI workload">
+    ```bash
+    dotnet workload install maui
+    ```
+    
+    Verify installation:
+    ```bash
+    dotnet workload list
+    ```
+  </Step>
+  
+  <Step title="Platform-specific requirements">
+    - **Android:** Android SDK (installed with Visual Studio or Android Studio)
+    - **iOS:** Xcode 15+ (macOS only)
+    - **Windows:** Windows 10 SDK 10.0.19041 or higher
+  </Step>
+</Steps>
+
+## API Endpoint Configuration
+
+The mobile app needs to know where to find the API.
+
+### Configure API Base URL
+
+Open `CafeIES.MAUI/MauiProgram.cs` and locate the API configuration:
+
+```csharp
+// ── HTTP Client ───────────────────────────────────────────────────────
+// 10.0.2.2 is the alias for localhost from Android emulator
+#if ANDROID
+    var apiBase = "https://10.0.2.2:50658/";
+#else
+    var apiBase = "https://localhost:50658/";
+#endif
+```
+
+<Tabs>
+  <Tab title="Android Emulator">
+    Use `10.0.2.2` to access localhost from Android emulator:
+    
+    ```csharp
+    #if ANDROID
+        var apiBase = "https://10.0.2.2:7001/";
+    #endif
+    ```
+    
+    Replace `7001` with your API port (from `launchSettings.json`).
+  </Tab>
+  
+  <Tab title="Physical Device">
+    Use your computer's local network IP:
+    
+    ```csharp
+    #if ANDROID
+        var apiBase = "https://192.168.1.100:7001/";
+    #endif
+    ```
+    
+    Find your IP:
+    ```bash
+    # Windows
+    ipconfig
+    
+    # Linux/Mac
+    ifconfig
+    ```
+  </Tab>
+  
+  <Tab title="Production">
+    Use your production API domain:
+    
+    ```csharp
+    var apiBase = "https://api.cafeies.com/";
+    ```
+  </Tab>
+</Tabs>
+
+<Warning>
+  The default configuration accepts self-signed certificates for development:
+  
+  ```csharp
+  ServerCertificateCustomValidationCallback = (m, c, ch, e) => true
+  ```
+  
+  **Remove this in production** to enforce proper SSL validation.
+</Warning>
+
+### Update ApplicationId
+
+For production releases, customize the app identifier in `CafeIES.MAUI.csproj`:
+
+```xml
+<PropertyGroup>
+  <ApplicationId>es.cafeies.app</ApplicationId>
+  <ApplicationVersion>1</ApplicationVersion>
+  <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
+</PropertyGroup>
+```
+
+<Note>
+  Use your organization's reverse domain notation (e.g., `com.yourschool.cafeies`).
+</Note>
+
+## Building for Android
+
+### Development Build
+
+<Steps>
+  <Step title="Start Android emulator">
+    Launch an Android emulator from Visual Studio Device Manager or Android Studio.
+    
+    **Recommended:** Pixel 5 API 33 or higher
+  </Step>
+  
+  <Step title="Build and deploy">
+    Using Visual Studio:
+    1. Set `CafeIES.MAUI` as startup project
+    2. Select target: `net9.0-android`
+    3. Choose your Android emulator
+    4. Press F5 to build and run
+    
+    Using CLI:
+    ```bash
+    cd CafeIES.MAUI
+    dotnet build -f net9.0-android
+    dotnet run -f net9.0-android
+    ```
+  </Step>
+  
+  <Step title="Verify connectivity">
+    The app should connect to your API at `https://10.0.2.2:7001`
+    
+    Check the API is running:
+    ```bash
+    curl https://localhost:7001/swagger
+    ```
+  </Step>
+</Steps>
+
+### Physical Android Device
+
+<Steps>
+  <Step title="Enable Developer Mode">
+    On your Android device:
+    1. Go to **Settings** → **About Phone**
+    2. Tap **Build Number** 7 times
+    3. Go back to **Settings** → **Developer Options**
+    4. Enable **USB Debugging**
+  </Step>
+  
+  <Step title="Connect device">
+    1. Connect via USB
+    2. Accept "Allow USB Debugging" prompt on device
+    3. Device should appear in Visual Studio's device list
+  </Step>
+  
+  <Step title="Update API endpoint">
+    Change `MauiProgram.cs` to use your computer's local IP:
+    ```csharp
+    var apiBase = "https://192.168.1.100:7001/";
+    ```
+  </Step>
+  
+  <Step title="Deploy to device">
+    Press F5 or:
+    ```bash
+    dotnet build -f net9.0-android
+    adb install bin/Debug/net9.0-android/es.cafeies.app-Signed.apk
+    ```
+  </Step>
+</Steps>
+
+### Production APK
+
+Create a release build for distribution:
+
+<Steps>
+  <Step title="Create keystore for signing">
+    Generate a keystore for APK signing:
+    
+    ```bash
+    keytool -genkeypair -v -keystore cafeies.keystore -alias cafeies \
+      -keyalg RSA -keysize 2048 -validity 10000
+    ```
+    
+    **Keep this file secure!** You'll need it for all future app updates.
+  </Step>
+  
+  <Step title="Configure signing in csproj">
+    Add to `CafeIES.MAUI.csproj`:
+    
+    ```xml
+    <PropertyGroup Condition="'$(Configuration)' == 'Release' and '$(TargetFramework)' == 'net9.0-android'">
+      <AndroidKeyStore>True</AndroidKeyStore>
+      <AndroidSigningKeyStore>cafeies.keystore</AndroidSigningKeyStore>
+      <AndroidSigningKeyAlias>cafeies</AndroidSigningKeyAlias>
+      <AndroidSigningKeyPass>your-password</AndroidSigningKeyPass>
+      <AndroidSigningStorePass>your-password</AndroidSigningStorePass>
+    </PropertyGroup>
+    ```
+  </Step>
+  
+  <Step title="Build release APK">
+    ```bash
+    dotnet publish -f net9.0-android -c Release
+    ```
+    
+    Output: `bin/Release/net9.0-android/publish/es.cafeies.app-Signed.apk`
+  </Step>
+  
+  <Step title="Distribute">
+    - **Internal:** Share APK directly via email/file share
+    - **Google Play Store:** Upload to Play Console (requires developer account)
+  </Step>
+</Steps>
+
+<Warning>
+  Never commit keystore files or passwords to source control. Use environment variables or secure credential storage.
+</Warning>
+
+## Building for iOS
+
+<Note>
+  iOS builds require **macOS** with Xcode installed. Windows users need a Mac Build Host.
+</Note>
+
+### Development Build (Simulator)
+
+<Steps>
+  <Step title="Open in Visual Studio for Mac or VS Code">
+    ```bash
+    cd CafeIES.MAUI
+    code .
+    ```
+  </Step>
+  
+  <Step title="Select iOS simulator">
+    Choose a simulator device (e.g., iPhone 15, iOS 17)
+  </Step>
+  
+  <Step title="Build and run">
+    ```bash
+    dotnet build -f net9.0-ios
+    dotnet run -f net9.0-ios
+    ```
+    
+    Or press F5 in Visual Studio for Mac.
+  </Step>
+  
+  <Step title="Verify API connectivity">
+    The app uses `https://localhost:7001` on iOS.
+    
+    If API is on another machine, update `MauiProgram.cs`:
+    ```csharp
+    #if IOS
+        var apiBase = "https://your-mac-ip:7001/";
+    #endif
+    ```
+  </Step>
+</Steps>
+
+### Physical iOS Device
+
+<Steps>
+  <Step title="Apple Developer Account">
+    Required for device provisioning. Sign up at [developer.apple.com](https://developer.apple.com)
+  </Step>
+  
+  <Step title="Configure signing in Xcode">
+    1. Open `CafeIES.MAUI.csproj` in Xcode (or via Visual Studio)
+    2. Select your project in the navigator
+    3. Go to **Signing & Capabilities**
+    4. Select your Team (Apple Developer account)
+    5. Xcode auto-generates provisioning profile
+  </Step>
+  
+  <Step title="Connect device">
+    1. Connect iPhone/iPad via USB
+    2. Trust computer on device when prompted
+    3. Device appears in Visual Studio's device list
+  </Step>
+  
+  <Step title="Build and deploy">
+    ```bash
+    dotnet build -f net9.0-ios -c Debug \
+      /p:RuntimeIdentifier=ios-arm64 \
+      /p:ArchiveOnBuild=false
+    ```
+    
+    Or use Visual Studio for Mac's GUI deployment.
+  </Step>
+</Steps>
+
+### Production IPA (App Store)
+
+<Steps>
+  <Step title="Enroll in Apple Developer Program">
+    Required for App Store distribution ($99/year).
+  </Step>
+  
+  <Step title="Create App Store Connect record">
+    1. Log in to [appstoreconnect.apple.com](https://appstoreconnect.apple.com)
+    2. Create new app
+    3. Fill in metadata (name, description, screenshots)
+  </Step>
+  
+  <Step title="Build archive">
+    ```bash
+    dotnet publish -f net9.0-ios -c Release \
+      /p:ArchiveOnBuild=true \
+      /p:RuntimeIdentifier=ios-arm64
+    ```
+  </Step>
+  
+  <Step title="Upload to App Store">
+    Use Xcode's Organizer or Transporter app to upload the IPA.
+  </Step>
+  
+  <Step title="Submit for review">
+    Complete App Store Connect submission and wait for Apple review (1-3 days).
+  </Step>
+</Steps>
+
+<Warning>
+  App Store review requires compliance with Apple's guidelines. Ensure proper privacy policy, content ratings, and metadata.
+</Warning>
+
+## Building for Windows
+
+<Steps>
+  <Step title="Build MSIX package">
+    ```bash
+    dotnet build -f net9.0-windows10.0.19041.0 -c Release
+    ```
+  </Step>
+  
+  <Step title="Run on Windows">
+    The MAUI project uses `<WindowsPackageType>None</WindowsPackageType>`, so it runs without MSIX deployment:
+    
+    ```bash
+    dotnet run -f net9.0-windows10.0.19041.0
+    ```
+  </Step>
+  
+  <Step title="Distribute">
+    - **Internal:** Share the executable from `bin/Release/net9.0-windows10.0.19041.0/`
+    - **Microsoft Store:** Package as MSIX and submit to Partner Center
+  </Step>
+</Steps>
+
+<Note>
+  Windows deployment is optional. The primary targets are Android and iOS for a school cafeteria mobile ordering system.
+</Note>
+
+## App Configuration
+
+### Custom Fonts
+
+The app includes custom fonts specified in the csproj:
+
+```xml
+<ItemGroup>
+  <MauiFont Include="Resources\Fonts\Syne-Bold.ttf" />
+  <MauiFont Include="Resources\Fonts\Syne-Regular.ttf" />
+  <MauiFont Include="Resources\Fonts\DMSans-Regular.ttf" />
+  <MauiFont Include="Resources\Fonts\DMSans-Medium.ttf" />
+</ItemGroup>
+```
+
+Used in XAML:
+```xml
+<Label FontFamily="SyneBold" />
+<Label FontFamily="DMSans" />
+```
+
+### Splash Screen and Icons
+
+Customize app branding in `Resources/`:
+- `appicon.svg` - App icon (adaptive for all platforms)
+- `appiconfg.svg` - Foreground layer for Android adaptive icon
+- `splash.svg` - Splash screen
+
+<Note>
+  SVG resources are automatically rasterized to correct sizes for each platform during build.
+</Note>
+
+### SignalR Real-time Updates
+
+The app uses SignalR for real-time order status updates.
+
+**Hub connection in ApiService.cs:**
+```csharp
+_hubConnection = new HubConnectionBuilder()
+    .WithUrl($"{apiBase}hubs/cafeteria", options => {
+        options.AccessTokenProvider = () => Task.FromResult(token);
+    })
+    .Build();
+```
+
+Ensure the API endpoint includes `/hubs/cafeteria`.
+
+## Troubleshooting
+
+### Cannot connect to API from emulator
+
+**Issue:** App shows network error when trying to log in.
+
+**Solutions:**
+1. **Android emulator:** Use `10.0.2.2` instead of `localhost`
+2. **iOS simulator:** Use `localhost` (shares host networking)
+3. **Physical devices:** Use local network IP address
+4. Verify API is running: `curl https://localhost:7001/swagger`
+5. Check firewall allows incoming connections on API port
+
+### SSL certificate errors
+
+**Error:** `The SSL connection could not be established`
+
+**Solutions:**
+1. Development builds use `ServerCertificateCustomValidationCallback` to accept self-signed certs
+2. For production, ensure valid SSL certificate on API
+3. Android may require installing CA certificate on device
+
+### App crashes on startup
+
+**Solutions:**
+1. Check API endpoint is reachable
+2. View device logs:
+   ```bash
+   # Android
+   adb logcat | grep CafeIES
+   
+   # iOS
+   xcrun simctl spawn booted log stream --predicate 'process == "CafeIES.MAUI"'
+   ```
+3. Verify all NuGet packages restored correctly
+4. Clean and rebuild:
+   ```bash
+   dotnet clean
+   dotnet build -f net9.0-android
+   ```
+
+### Build errors: missing workload
+
+**Error:** `Workload 'microsoft-android-sdk-full' not installed`
+
+**Solution:**
+```bash
+dotnet workload restore
+dotnet workload install maui android
+```
+
+### iOS signing issues
+
+**Error:** `No valid iOS code signing keys found in keychain`
+
+**Solutions:**
+1. Ensure logged into Apple account in Xcode
+2. Select provisioning profile in project settings
+3. For development, use "Automatic" signing
+4. For distribution, create distribution certificate in Apple Developer portal
+
+### Hot Reload not working
+
+**Issue:** Changes don't reflect without full rebuild.
+
+**Solutions:**
+1. Ensure running in Debug configuration
+2. Check **Hot Reload** is enabled in Visual Studio settings
+3. Some changes (like adding new files) require full rebuild
+4. Restart the app if Hot Reload becomes unresponsive
+
+## Testing the Mobile App
+
+### Test user accounts
+
+1. **Admin account** (created automatically):
+   - Email: `admin@cafeies.local`
+   - Password: `Admin1234!`
+   - No time restrictions
+
+2. **Student registration**:
+   - Register via the app (RegistroPage)
+   - Select a shift (Mañana, Tarde, Noche)
+   - Account pending until admin approves
+
+3. **Teacher/Staff via QR**:
+   - Admin generates QR code in Blazor panel
+   - Scan QR in mobile app
+   - Instant registration, no approval needed
+
+### Test order flow
+
+<Steps>
+  <Step title="Log in as student during allowed time">
+    Students can only order during their shift's time slots.
+  </Step>
+  
+  <Step title="Browse products">
+    HomePage displays catalog with categories and stock levels.
+  </Step>
+  
+  <Step title="Add to cart">
+    Add items, adjust quantities in CarritoPage.
+  </Step>
+  
+  <Step title="Place order">
+    Choose payment method, confirm order.
+  </Step>
+  
+  <Step title="Track status">
+    View real-time updates in PedidosPage and DetallePedidoPage.
+    
+    Order states:
+    - Pendiente (Pending)
+    - EnPreparacion (In Preparation)
+    - Listo (Ready)
+    - Entregado (Delivered)
+    - Cancelado (Cancelled)
+  </Step>
+</Steps>
+
+## Next Steps
+
+With the mobile app deployed:
+
+1. [Learn about the Blazor Admin panel](/apps/admin-panel) to manage orders and users
+2. [Configure time restrictions and shifts](/configuration/time-schedules)
+3. [Generate QR codes for teacher/staff registration](/guides/admin/generating-invitations)
+4. [Test real-time notifications with SignalR](/features/real-time-updates)
+
+<Note>
+  For production deployments, consider:
+  - Push notifications (Firebase Cloud Messaging for Android, APNS for iOS)
+  - Analytics integration (App Center, Firebase Analytics)
+  - Crash reporting (Sentry, App Center Crashes)
+  - Over-the-air updates (CodePush alternatives for MAUI)
+</Note>

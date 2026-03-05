@@ -1,0 +1,541 @@
+---
+title: Schedule Restrictions
+description: Time-based ordering controls with configurable time windows per shift
+icon: clock
+---
+
+## Overview
+
+CaféIES implements a sophisticated schedule restriction system that controls when students can place orders based on their assigned shift. Teachers, staff, and admins can order anytime without restrictions.
+
+## Shift System
+
+The system supports three shifts:
+
+```csharp CafeIES.Shared/Models/Enums.cs
+public enum Turno
+{
+    Manana = 0,   // Turno de mañana
+    Tarde  = 1,   // Turno de tarde
+    Noche  = 2    // Turno de noche
+}
+```
+
+<CardGroup cols={3}>
+  <Card title="Mañana" icon="sunrise">
+    **Morning Shift**
+    
+    Typically 8:00 - 14:00
+    
+    Common windows: Before class, break time
+  </Card>
+  
+  <Card title="Tarde" icon="sun">
+    **Afternoon Shift**
+    
+    Typically 14:00 - 20:00
+    
+    Common windows: Break time, before evening class
+  </Card>
+  
+  <Card title="Noche" icon="moon">
+    **Night Shift**
+    
+    Typically 18:00 - 23:00
+    
+    Common windows: Dinner break
+  </Card>
+</CardGroup>
+
+## FranjaHoraria Entity
+
+Time windows are defined using `FranjaHoraria` (time slots):
+
+```csharp CafeIES.Shared/Models/Entities.cs
+public class FranjaHoraria
+{
+    public int Id { get; set; }
+
+    public Turno Turno { get; set; }
+
+    [Required, MaxLength(60)]
+    public string Descripcion { get; set; } = string.Empty;  // ej: "Recreo"
+
+    /// <summary>Hora de inicio en formato HH:mm (ej: "11:00")</summary>
+    [Required, MaxLength(5)]
+    public string HoraInicio { get; set; } = string.Empty;
+
+    /// <summary>Hora de fin en formato HH:mm (ej: "11:30")</summary>
+    [Required, MaxLength(5)]
+    public string HoraFin { get; set; } = string.Empty;
+
+    public bool Activa { get; set; } = true;
+
+    /// <summary>
+    /// Comprueba si DateTime.Now cae dentro de esta franja.
+    /// </summary>
+    [NotMapped]
+    public bool EstaActiva
+    {
+        get
+        {
+            if (!Activa) return false;
+            var ahora = TimeOnly.FromDateTime(DateTime.Now);
+            var inicio = TimeOnly.Parse(HoraInicio);
+            var fin = TimeOnly.Parse(HoraFin);
+            return ahora >= inicio && ahora <= fin;
+        }
+    }
+}
+```
+
+<Note>
+Each shift can have multiple time windows (e.g., "Before class" + "Break time" + "Lunch").
+</Note>
+
+## HorarioService Logic
+
+The `HorarioService` is the core business logic for schedule validation:
+
+```csharp CafeIES.API/Services/HorarioService.cs
+public class HorarioService
+{
+    private readonly AppDbContext _db;
+
+    public HorarioService(AppDbContext db)
+    {
+        _db = db;
+    }
+
+    /// <summary>
+    /// Comprueba si el turno indicado tiene pedidos habilitados ahora mismo.
+    /// Los roles Admin, Profesor y Personal no tienen restricción: siempre pueden pedir.
+    /// </summary>
+    public async Task<HorarioResult> PuedePedirAhoraAsync(int usuarioId)
+    {
+        var usuario = await _db.Usuarios.FindAsync(usuarioId);
+        if (usuario is null)
+            return HorarioResult.Error("Usuario no encontrado.");
+
+        // Admin, Profesor y Personal: sin restricción
+        if (usuario.Rol != RolUsuario.Alumno)
+            return HorarioResult.Permitido("Sin restricción horaria.");
+
+        // Alumno sin turno asignado (no debería ocurrir)
+        if (usuario.Turno is null)
+            return HorarioResult.Denegado("Tu cuenta no tiene turno asignado. Contacta con el administrador.");
+
+        var franjas = await _db.FranjasHorarias
+            .Where(f => f.Turno == usuario.Turno && f.Activa)
+            .ToListAsync();
+
+        if (!franjas.Any())
+            return HorarioResult.Denegado("No hay franjas horarias configuradas para tu turno.");
+
+        // ¿Alguna franja está activa ahora mismo?
+        var franjaActiva = franjas.FirstOrDefault(f => f.EstaActiva);
+
+        if (franjaActiva is not null)
+        {
+            // Calcular cuánto queda de la franja
+            var fin = TimeOnly.Parse(franjaActiva.HoraFin);
+            var ahora = TimeOnly.FromDateTime(DateTime.Now);
+            var minutosRestantes = (int)(fin - ahora).TotalMinutes;
+
+            return HorarioResult.Permitido(
+                $"Pedidos disponibles hasta las {franjaActiva.HoraFin} ({minutosRestantes} min restantes).",
+                franjaActiva);
+        }
+
+        // No hay franja activa → calcular la próxima
+        var proxima = ObtenerProximaFranja(franjas);
+        if (proxima is null)
+            return HorarioResult.Denegado("No hay más franjas horarias hoy para tu turno.");
+
+        return HorarioResult.Denegado(
+            $"Pedidos no disponibles ahora. Próxima ventana: {proxima.Descripcion} a las {proxima.HoraInicio}.",
+            proxima);
+    }
+
+    private static FranjaHoraria? ObtenerProximaFranja(IEnumerable<FranjaHoraria> franjas)
+    {
+        var ahora = TimeOnly.FromDateTime(DateTime.Now);
+        return franjas
+            .Where(f => TimeOnly.Parse(f.HoraInicio) > ahora)
+            .OrderBy(f => TimeOnly.Parse(f.HoraInicio))
+            .FirstOrDefault();
+    }
+}
+```
+
+## HorarioResult Response
+
+The service returns a typed result with helpful information:
+
+```csharp CafeIES.API/Services/HorarioService.cs
+public class HorarioResult
+{
+    public bool Puede          { get; init; }
+    public string Mensaje      { get; init; } = string.Empty;
+    public bool EsError        { get; init; }
+    public FranjaHoraria? FranjaActual  { get; init; }
+    public FranjaHoraria? ProximaFranja { get; init; }
+
+    public static HorarioResult Permitido(string msg, FranjaHoraria? franja = null)
+        => new() { Puede = true,  Mensaje = msg, FranjaActual  = franja };
+
+    public static HorarioResult Denegado(string msg, FranjaHoraria? proxima = null)
+        => new() { Puede = false, Mensaje = msg, ProximaFranja = proxima };
+
+    public static HorarioResult Error(string msg)
+        => new() { Puede = false, Mensaje = msg, EsError = true };
+}
+```
+
+## Validation Flow
+
+<Steps>
+  <Step title="Check user role">
+    If user is Admin, Profesor, or Personal → **Allow immediately** (no restrictions)
+  </Step>
+  
+  <Step title="Verify shift assignment">
+    If student has no shift → **Deny** with error message
+  </Step>
+  
+  <Step title="Load active time windows">
+    Query all active `FranjaHoraria` records for the user's shift
+  </Step>
+  
+  <Step title="Check current time">
+    If current time falls within any window → **Allow** with time remaining
+  </Step>
+  
+  <Step title="Calculate next window">
+    If outside all windows → **Deny** with next window information
+  </Step>
+</Steps>
+
+## Real-Time Examples
+
+### Scenario 1: Active Window
+
+```json
+{
+  "Puede": true,
+  "Mensaje": "Pedidos disponibles hasta las 11:30 (23 min restantes).",
+  "FranjaActual": {
+    "Turno": "Manana",
+    "Descripcion": "Recreo",
+    "HoraInicio": "11:00",
+    "HoraFin": "11:30"
+  }
+}
+```
+
+### Scenario 2: Outside Window
+
+```json
+{
+  "Puede": false,
+  "Mensaje": "Pedidos no disponibles ahora. Próxima ventana: Recreo a las 11:00.",
+  "ProximaFranja": {
+    "Turno": "Manana",
+    "Descripcion": "Recreo",
+    "HoraInicio": "11:00",
+    "HoraFin": "11:30"
+  }
+}
+```
+
+### Scenario 3: No Restrictions
+
+```json
+{
+  "Puede": true,
+  "Mensaje": "Sin restricción horaria."
+}
+```
+
+## API Integration
+
+The schedule check is exposed via API endpoint:
+
+```csharp CafeIES.API/Controllers/PedidosController.cs
+[HttpGet("puedo-pedir")]
+public async Task<ActionResult<HorarioStatusDto>> PuedoPedir()
+{
+    var userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
+    var result = await _horario.PuedePedirAhoraAsync(userId);
+
+    return Ok(new HorarioStatusDto(
+        result.Puede,
+        result.Mensaje,
+        result.ProximaFranja?.Descripcion,
+        result.ProximaFranja?.HoraInicio
+    ));
+}
+```
+
+**Response DTO:**
+
+```csharp CafeIES.Shared/Models/DTOs.cs
+public record HorarioStatusDto(
+    bool   PuedePedir,
+    string Mensaje,
+    string? ProximaFranja,
+    string? ProximaHora
+);
+```
+
+## Order Creation Validation
+
+Schedule validation is automatically enforced during order creation:
+
+```csharp CafeIES.API/Controllers/PedidosController.cs
+[HttpPost]
+public async Task<ActionResult<PedidoDto>> Crear([FromBody] CrearPedidoRequest req)
+{
+    var userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
+
+    // 1. Comprobar horario
+    var horario = await _horario.PuedePedirAhoraAsync(userId);
+    if (!horario.Puede)
+        return BadRequest(new { mensaje = horario.Mensaje });
+
+    // 2. Continue with order creation...
+    // ...
+}
+```
+
+<Warning>
+If a student's app is left open during an active window and they attempt to order after the window closes, the API will reject the order.
+</Warning>
+
+## Admin Configuration
+
+Admins can dynamically manage time windows without code changes:
+
+### List Time Windows
+
+```csharp CafeIES.API/Controllers/AdminController.cs
+[HttpGet("horarios")]
+public async Task<ActionResult<List<FranjaHorariaDto>>> GetHorarios()
+{
+    var franjas = await _db.FranjasHorarias
+        .OrderBy(f => f.Turno).ThenBy(f => f.HoraInicio)
+        .ToListAsync();
+    return Ok(franjas.Select(MapFranjaDto).ToList());
+}
+```
+
+### Create Time Window
+
+```csharp CafeIES.API/Controllers/AdminController.cs
+[HttpPost("horarios")]
+public async Task<ActionResult<FranjaHorariaDto>> CrearFranja([FromBody] UpsertFranjaRequest req)
+{
+    var franja = new FranjaHoraria
+    {
+        Turno       = req.Turno,
+        Descripcion = req.Descripcion,
+        HoraInicio  = req.HoraInicio,
+        HoraFin     = req.HoraFin,
+        Activa      = req.Activa
+    };
+    _db.FranjasHorarias.Add(franja);
+    await _db.SaveChangesAsync();
+    return Ok(MapFranjaDto(franja));
+}
+```
+
+### Update Time Window
+
+```csharp CafeIES.API/Controllers/AdminController.cs
+[HttpPut("horarios/{id}")]
+public async Task<ActionResult<FranjaHorariaDto>> ActualizarFranja(int id, [FromBody] UpsertFranjaRequest req)
+{
+    var franja = await _db.FranjasHorarias.FindAsync(id);
+    if (franja is null) return NotFound();
+
+    franja.Turno       = req.Turno;
+    franja.Descripcion = req.Descripcion;
+    franja.HoraInicio  = req.HoraInicio;
+    franja.HoraFin     = req.HoraFin;
+    franja.Activa      = req.Activa;
+    await _db.SaveChangesAsync();
+    return Ok(MapFranjaDto(franja));
+}
+```
+
+### Delete Time Window
+
+```csharp CafeIES.API/Controllers/AdminController.cs
+[HttpDelete("horarios/{id}")]
+public async Task<ActionResult> EliminarFranja(int id)
+{
+    var franja = await _db.FranjasHorarias.FindAsync(id);
+    if (franja is null) return NotFound();
+    _db.FranjasHorarias.Remove(franja);
+    await _db.SaveChangesAsync();
+    return NoContent();
+}
+```
+
+### Request DTO
+
+```csharp CafeIES.Shared/Models/DTOs.cs
+public record UpsertFranjaRequest(
+    [Required] Turno  Turno,
+    [Required] string Descripcion,
+    [Required, RegularExpression(@"^\d{2}:\d{2}$")] string HoraInicio,
+    [Required, RegularExpression(@"^\d{2}:\d{2}$")] string HoraFin,
+    bool Activa = true
+);
+```
+
+<Note>
+Time format is validated using regex pattern `^\d{2}:\d{2}$` (e.g., "09:30", "14:15").
+</Note>
+
+## Configuration Examples
+
+### Morning Shift Example
+
+```json
+[
+  {
+    "Turno": "Manana",
+    "Descripcion": "Antes de clase",
+    "HoraInicio": "08:00",
+    "HoraFin": "08:30",
+    "Activa": true
+  },
+  {
+    "Turno": "Manana",
+    "Descripcion": "Recreo",
+    "HoraInicio": "11:00",
+    "HoraFin": "11:30",
+    "Activa": true
+  },
+  {
+    "Turno": "Manana",
+    "Descripcion": "Almuerzo",
+    "HoraInicio": "13:00",
+    "HoraFin": "14:00",
+    "Activa": true
+  }
+]
+```
+
+### Afternoon Shift Example
+
+```json
+[
+  {
+    "Turno": "Tarde",
+    "Descripcion": "Antes de clase",
+    "HoraInicio": "14:00",
+    "HoraFin": "14:30",
+    "Activa": true
+  },
+  {
+    "Turno": "Tarde",
+    "Descripcion": "Merienda",
+    "HoraInicio": "17:00",
+    "HoraFin": "17:30",
+    "Activa": true
+  }
+]
+```
+
+### Night Shift Example
+
+```json
+[
+  {
+    "Turno": "Noche",
+    "Descripcion": "Cena",
+    "HoraInicio": "20:00",
+    "HoraFin": "20:45",
+    "Activa": true
+  }
+]
+```
+
+## Mobile App Integration
+
+The mobile app checks ordering availability and displays appropriate UI:
+
+```csharp CafeIES.MAUI/Services/ApiService.cs
+public async Task<HorarioStatusDto?> GetHorarioStatusAsync()
+{
+    try
+    {
+        await AdjuntarTokenAsync();
+        return await _http.GetFromJsonAsync<HorarioStatusDto>("api/pedidos/puedo-pedir");
+    }
+    catch { return null; }
+}
+```
+
+<CardGroup cols={2}>
+  <Card title="Window Active" icon="circle-check" color="#22c55e">
+    ✅ Show catalog and cart
+    
+    Display countdown timer
+    
+    Enable order placement
+  </Card>
+  
+  <Card title="Window Closed" icon="circle-xmark" color="#ef4444">
+    ❌ Disable ordering
+    
+    Show next window info
+    
+    Display helpful message
+  </Card>
+</CardGroup>
+
+## API Endpoints Summary
+
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/api/pedidos/puedo-pedir` | GET | User | Check if user can order now |
+| `/api/admin/horarios` | GET | Admin | List all time windows |
+| `/api/admin/horarios` | POST | Admin | Create new time window |
+| `/api/admin/horarios/{id}` | PUT | Admin | Update time window |
+| `/api/admin/horarios/{id}` | DELETE | Admin | Delete time window |
+| `/api/admin/usuarios/{id}/turno` | PATCH | Admin | Change user's shift |
+
+## Benefits
+
+<CardGroup cols={2}>
+  <Card title="Configurable" icon="sliders">
+    Admins can adjust schedules without code changes or deployments
+  </Card>
+  
+  <Card title="Fair Access" icon="scale-balanced">
+    Each shift gets appropriate ordering windows matching their schedule
+  </Card>
+  
+  <Card title="No Overload" icon="shield-halved">
+    Prevents cafeteria from being overwhelmed with simultaneous orders
+  </Card>
+  
+  <Card title="Staff Flexibility" icon="user-unlock">
+    Teachers and staff can order anytime without restrictions
+  </Card>
+</CardGroup>
+
+## Related Features
+
+<CardGroup cols={2}>
+  <Card title="User Management" icon="users" href="/features/user-management">
+    Learn about roles and shift assignment
+  </Card>
+  
+  <Card title="Order Management" icon="receipt" href="/features/order-management">
+    See how schedule checks integrate with order creation
+  </Card>
+</CardGroup>

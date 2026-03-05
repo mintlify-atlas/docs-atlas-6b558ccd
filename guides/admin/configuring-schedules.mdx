@@ -1,0 +1,344 @@
+---
+title: Configuring Schedules
+description: Set up time windows and shift-based ordering schedules for students
+---
+
+CaféIES uses a shift and time window system to control when students can place orders. This guide explains how to configure schedules that align with your school's daily routine.
+
+## Understanding the Shift System
+
+The system organizes students into three shifts (turnos) based on when they attend school:
+
+### 🌅 Turno Mañana (Morning Shift)
+- Typically students who attend morning classes
+- Common schedule: 8:00 AM - 2:00 PM
+- Can only order during time windows configured for Mañana
+
+### 🌤️ Turno Tarde (Afternoon Shift)
+- Typically students who attend afternoon/evening classes
+- Common schedule: 2:00 PM - 8:00 PM
+- Can only order during time windows configured for Tarde
+
+### 🌙 Turno Noche (Night Shift)
+- Typically students who attend night classes
+- Common schedule: 6:00 PM - 11:00 PM
+- Can only order during time windows configured for Noche
+
+<Note>
+  Teachers and staff are not assigned to shifts and can order at any time regardless of time window configuration.
+</Note>
+
+## Understanding Time Windows (Franjas Horarias)
+
+Time windows define the specific times when students in each shift can place orders. Each time window has:
+
+- **Shift assignment**: Which shift (Mañana, Tarde, or Noche) can order during this window
+- **Description**: A label like "Recreo" (recess) or "Almuerzo" (lunch)
+- **Start time**: When orders can begin (HH:mm format)
+- **End time**: When orders must stop (HH:mm format)
+- **Active status**: Whether this window is currently enabled
+
+### Live Time Windows
+
+The Schedules page shows which time windows are currently active with a **● live indicator**. When the current time falls within an active window's start and end times, students in that shift can place orders.
+
+## Viewing Configured Schedules
+
+The Schedules page is organized by shift. For each shift, you see:
+
+- All time windows configured for that shift
+- Each window's description, start time, and end time
+- Active/Deactivated status
+- Live indicator (green dot) when the window is currently active
+- Add and delete buttons
+
+<Warning>
+  If a shift has no time windows configured, students in that shift cannot place orders at any time.
+</Warning>
+
+## Adding a Time Window
+
+<Steps>
+  <Step title="Choose a shift">
+    On the Schedules page, find the section for the shift you want to configure (Mañana, Tarde, or Noche).
+  </Step>
+  
+  <Step title="Click Add Time Window">
+    Click the **+ Añadir franja** button in that shift's header.
+  </Step>
+  
+  <Step title="Enter a description">
+    In the modal that appears, enter a descriptive name for this time window:
+    - "Recreo" (recess/break)
+    - "Almuerzo" (lunch)
+    - "Desayuno" (breakfast)
+    - "Merienda" (snack time)
+  </Step>
+  
+  <Step title="Set start time">
+    Enter the start time in HH:mm format (24-hour clock):
+    - Example: "08:00" for 8:00 AM
+    - Example: "14:30" for 2:30 PM
+  </Step>
+  
+  <Step title="Set end time">
+    Enter the end time in HH:mm format:
+    - Must be after the start time
+    - Example: "09:00" for a 1-hour window starting at 08:00
+  </Step>
+  
+  <Step title="Save the time window">
+    Click **Guardar** to create the time window. It immediately appears in the schedule list and becomes active.
+  </Step>
+</Steps>
+
+### Time Window Best Practices
+
+**Duration**: Most time windows are 15-60 minutes. Consider:
+- How long students have for breaks
+- How much time cafeteria staff need to prepare orders
+- Potential lines or wait times
+
+**Overlap**: You can create overlapping windows for the same shift if students have staggered breaks.
+
+**Buffer time**: End windows 5-10 minutes before the actual end of a break to give students time to pick up their orders.
+
+## Example Schedule Configurations
+
+### Traditional School Day (Morning Shift)
+
+| Description | Start Time | End Time | Purpose |
+|-------------|------------|----------|----------|
+| Desayuno | 08:00 | 08:30 | Morning breakfast period |
+| Recreo | 10:30 | 11:00 | Mid-morning break |
+| Almuerzo | 13:00 | 14:00 | Lunch before dismissal |
+
+### Afternoon Shift
+
+| Description | Start Time | End Time | Purpose |
+|-------------|------------|----------|----------|
+| Merienda | 16:00 | 16:30 | Afternoon snack |
+| Cena | 19:00 | 20:00 | Dinner break |
+
+### Vocational/Night Programs
+
+| Description | Start Time | End Time | Purpose |
+|-------------|------------|----------|----------|
+| Cena | 18:30 | 19:30 | Dinner before classes |
+| Descanso | 21:00 | 21:20 | Evening break |
+
+## Editing Time Windows
+
+CaféIES does not provide a direct edit function for time windows. To modify a window:
+
+<Steps>
+  <Step title="Delete the old window">
+    Click the **🗑** (trash) button on the time window you want to change.
+  </Step>
+  
+  <Step title="Create a new window">
+    Click **+ Añadir franja** and configure the window with the correct times.
+  </Step>
+</Steps>
+
+<Note>
+  Deleting and recreating windows is immediate and doesn't affect historical data. Past orders placed during the old window remain in reports.
+</Note>
+
+## Deleting Time Windows
+
+<Steps>
+  <Step title="Find the window to remove">
+    Locate the time window in the appropriate shift section.
+  </Step>
+  
+  <Step title="Click the Delete button">
+    Click the **🗑** icon button on the right side of the time window card.
+  </Step>
+  
+  <Step title="Window removed">
+    The time window is immediately deleted. Students can no longer order during that time period.
+  </Step>
+</Steps>
+
+<Warning>
+  There is no confirmation dialog when deleting time windows. The deletion happens immediately and cannot be undone. You'll need to recreate the window if deleted by mistake.
+</Warning>
+
+## Activating and Deactivating Time Windows
+
+All newly created time windows are active by default. The admin interface shows active/deactivated status, but **there is no built-in toggle button** to change the status.
+
+To temporarily disable a time window:
+- Delete it using the 🗑 button
+- Recreate it when you want to re-enable it
+
+For permanent schedule changes:
+- Delete unused time windows
+- Create new windows with updated times
+
+## How Schedules Affect Student Ordering
+
+### During Active Time Windows
+
+When the current server time falls within a time window assigned to a student's shift:
+
+1. Students in that shift can access the ordering page
+2. They can browse products and add items to their cart
+3. They can submit orders which immediately go to the cafeteria
+4. The system displays a timer or indicator showing when ordering ends
+
+### Outside Time Windows
+
+When no time windows are active for a student's shift:
+
+1. Students see a message indicating ordering is not available
+2. They cannot add products to cart or submit orders
+3. They can still view their order history
+4. The next available ordering window may be displayed
+
+### Teachers and Staff
+
+Teachers and staff bypass all time window restrictions:
+- Can order at any time, 24/7
+- Not assigned to a shift
+- Not blocked when student time windows are closed
+
+<Note>
+  This allows teachers to order during prep periods, lunch breaks, or before/after school regardless of student schedules.
+</Note>
+
+## Multi-Shift Coordination
+
+Some schools run multiple shifts concurrently. Consider:
+
+**Staggered windows**: Don't schedule overlapping time windows for different shifts if your cafeteria has limited capacity.
+
+**Example of good coordination**:
+- Mañana Recreo: 10:30 - 11:00
+- Tarde Merienda: 16:30 - 17:00
+- No overlap, cafeteria handles one rush at a time
+
+**Example of poor coordination**:
+- Mañana Almuerzo: 13:00 - 14:00
+- Tarde Merienda: 13:30 - 14:00
+- 30-minute overlap creates double demand
+
+## Testing Your Schedule
+
+<Steps>
+  <Step title="Create a test student account">
+    Register a test student account (or use an existing one) assigned to each shift you want to test.
+  </Step>
+  
+  <Step title="Log in during different times">
+    Log in with the test account at various times throughout the day to verify:
+    - Ordering is available during configured windows
+    - Ordering is blocked outside windows
+    - The correct time windows apply to each shift
+  </Step>
+  
+  <Step title="Verify live indicators">
+    On the admin Schedules page, check that the ● live dot appears on the correct time window during each period.
+  </Step>
+</Steps>
+
+## Common Schedule Patterns
+
+### Single Break System
+
+Schools with one main ordering period per shift:
+- One 30-60 minute window during lunch or break
+- Simple to manage
+- May create bottlenecks if all students order at once
+
+### Multi-Break System
+
+Schools with several smaller ordering opportunities:
+- 2-4 shorter windows (15-30 minutes each)
+- Spreads demand across the day
+- Gives students flexibility
+- Requires more cafeteria staff coordination
+
+### Rolling Windows
+
+Overlapping windows for different grade levels or groups:
+- Stagger start times by 15-20 minutes
+- Reduces peak demand
+- Requires students to know their specific window
+- May need custom implementation beyond shift-based system
+
+## Timezone Considerations
+
+CaféIES uses the server's system time to determine if time windows are active.
+
+<Warning>
+  Ensure your server is configured with the correct timezone for your school's location. If the server timezone is wrong, time windows will activate at incorrect times.
+</Warning>
+
+To verify server time:
+1. Check the live indicators on the Schedules page
+2. Compare to your actual local time
+3. If there's a discrepancy, contact your system administrator to update the server timezone
+
+## Best Practices
+
+<Card title="Match School Bell Schedule" icon="bell">
+  Align time windows with your school's official break and lunch periods. Start windows when breaks begin and end them 5-10 minutes before students must return to class.
+</Card>
+
+<Card title="Communicate Changes to Students" icon="megaphone">
+  If you modify time windows during the school year, announce the changes through school communication channels. Students may not notice silent schedule changes.
+</Card>
+
+<Card title="Test Before School Starts" icon="flask">
+  Configure and test your time windows before the school year begins. Make adjustments based on test results rather than scrambling during the first week.
+</Card>
+
+<Card title="Monitor First Week Usage" icon="chart-line">
+  During the first week of school, watch for overcrowding during time windows. You may need to create additional staggered windows or extend durations.
+</Card>
+
+<Card title="Coordinate with Cafeteria Staff" icon="users">
+  Ensure cafeteria workers know when each time window is active so they're prepared for order volumes. Provide them with a printed schedule.
+</Card>
+
+<Card title="Plan for Special Days" icon="calendar">
+  On exam days, assemblies, or special schedules, temporarily delete and recreate time windows to match the modified bell schedule.
+</Card>
+
+## Troubleshooting
+
+### Students Can't Order During Scheduled Windows
+
+Possible causes:
+- Time window was accidentally deleted
+- Student is assigned to the wrong shift
+- Server time doesn't match local time
+- Time window is marked as "Desactivada" (check status pill)
+
+Solution: Verify the time window exists and is active for the correct shift.
+
+### Live Indicator Shows Wrong Window
+
+If the ● live dot appears on a window that shouldn't be active:
+- Server timezone is incorrect
+- Time window has incorrect start/end times
+- Browser time differs from server time (refresh the page)
+
+Solution: Check the time window configuration and verify server timezone.
+
+### Students from Wrong Shift Can Order
+
+If students can order during other shifts' windows:
+- Student account has the wrong shift assigned
+- Student may have Teacher or Staff role instead of Student role
+- Check the Users page to verify their assigned shift and role
+
+### All Shifts Blocked from Ordering
+
+If no students can order:
+- Check that time windows exist for each shift (don't show "Sin franjas configuradas")
+- Verify current time falls within at least one active window
+- Confirm products are available and active
+- Check server time against local time

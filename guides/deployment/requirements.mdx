@@ -1,0 +1,274 @@
+---
+title: 'System Requirements'
+description: 'Prerequisites and dependencies needed to deploy CaféIES'
+icon: 'list-check'
+---
+
+## Development Environment
+
+### .NET 9 SDK
+
+CaféIES is built on **.NET 9** and requires the SDK to build and run all components.
+
+<Steps>
+  <Step title="Download .NET 9 SDK">
+    Visit the [.NET downloads page](https://dotnet.microsoft.com/download/dotnet/9.0) and download the latest .NET 9 SDK for your operating system.
+  </Step>
+  
+  <Step title="Verify installation">
+    After installation, verify the SDK is correctly installed:
+    
+    ```bash
+    dotnet --version
+    ```
+    
+    Should output `9.0.x` or higher.
+  </Step>
+</Steps>
+
+<Note>
+  The project uses .NET 9 features across all components (API, Blazor Admin, and MAUI app). Make sure you have the complete SDK, not just the runtime.
+</Note>
+
+### Visual Studio 2022
+
+Recommended IDE for the best development experience with MAUI and Blazor.
+
+**Version Required:** Visual Studio 2022 17.8 or higher
+
+**Required Workloads:**
+- **ASP.NET and web development** - For the API and Blazor Admin panel
+- **.NET Multi-platform App UI development** - For the MAUI mobile app
+- **Mobile development with .NET** - For Android and iOS deployment
+
+<Steps>
+  <Step title="Install Visual Studio 2022">
+    Download from [visualstudio.microsoft.com](https://visualstudio.microsoft.com/downloads/)
+  </Step>
+  
+  <Step title="Select workloads during installation">
+    In the Visual Studio Installer, ensure you select:
+    - ASP.NET and web development
+    - .NET Multi-platform App UI development
+    - Mobile development with .NET
+  </Step>
+  
+  <Step title="Verify MAUI installation">
+    After installation, check that MAUI is available:
+    
+    ```bash
+    dotnet workload list
+    ```
+    
+    Should show `maui` in the installed workloads.
+  </Step>
+</Steps>
+
+<Warning>
+  If you're using Visual Studio Code or JetBrains Rider, you'll need to install the MAUI workload manually using `dotnet workload install maui`.
+</Warning>
+
+## Database Requirements
+
+### SQL Server
+
+CaféIES uses **Entity Framework Core with SQL Server** for data persistence.
+
+**Supported Versions:**
+- SQL Server 2019 or higher
+- SQL Server Express (free)
+- SQL Server LocalDB (development only)
+
+<Steps>
+  <Step title="Choose your SQL Server edition">
+    For production:
+    - **SQL Server Standard/Enterprise** - Full-featured, production-ready
+    - **SQL Server Express** - Free, limited to 10GB database size
+    
+    For development:
+    - **SQL Server LocalDB** - Lightweight, automatic instance management
+  </Step>
+  
+  <Step title="Install SQL Server">
+    Download from [microsoft.com/sql-server/sql-server-downloads](https://www.microsoft.com/sql-server/sql-server-downloads)
+    
+    For LocalDB (development):
+    ```bash
+    # Typically installed with Visual Studio
+    SqlLocalDB.exe info
+    ```
+  </Step>
+  
+  <Step title="Verify connectivity">
+    Test your SQL Server connection using SQL Server Management Studio (SSMS) or Azure Data Studio.
+    
+    Note your connection details:
+    - Server name (e.g., `localhost\SQLEXPRESS`, `.`, or `(localdb)\MSSQLLocalDB`)
+    - Authentication method (Windows Authentication or SQL Server Authentication)
+  </Step>
+</Steps>
+
+### Entity Framework Core Tools
+
+The project uses EF Core 9.0 for database migrations.
+
+**NuGet Packages (already included in `.csproj`):**
+```xml
+<PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="9.0.0" />
+<PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="9.0.0" />
+<PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.0" />
+```
+
+**Global EF Core CLI Tool:**
+```bash
+dotnet tool install --global dotnet-ef
+```
+
+Verify installation:
+```bash
+dotnet ef --version
+```
+
+## Mobile Development Requirements
+
+### Android Development
+
+<Steps>
+  <Step title="Android SDK">
+    Required for building and deploying to Android devices.
+    
+    **Minimum SDK:** API 21 (Android 5.0)
+    **Target SDK:** API 34 (Android 14)
+    
+    Installed automatically with the ".NET Multi-platform App UI" workload in Visual Studio.
+  </Step>
+  
+  <Step title="Android Emulator or Physical Device">
+    **Option A - Emulator:**
+    - Create an Android emulator via Visual Studio's Device Manager
+    - Recommended: Pixel 5 with Android 13 or higher
+    
+    **Option B - Physical Device:**
+    - Enable Developer Mode and USB Debugging on your Android device
+    - Connect via USB and authorize the computer
+  </Step>
+  
+  <Step title="Verify Android setup">
+    ```bash
+    dotnet build -f net9.0-android
+    ```
+    
+    Should build without errors.
+  </Step>
+</Steps>
+
+<Note>
+  The MAUI project targets `net9.0-android` as specified in `CafeIES.MAUI.csproj`.
+</Note>
+
+### iOS Development (macOS only)
+
+<Steps>
+  <Step title="Xcode">
+    Required for building and deploying to iOS devices.
+    
+    **Version:** Xcode 15 or higher
+    
+    Install from the Mac App Store or [developer.apple.com](https://developer.apple.com/xcode/)
+  </Step>
+  
+  <Step title="Command Line Tools">
+    After installing Xcode, install command line tools:
+    
+    ```bash
+    xcode-select --install
+    ```
+  </Step>
+  
+  <Step title="iOS Simulator or Physical Device">
+    **Option A - Simulator:**
+    - Included with Xcode
+    - Launch from Xcode or Visual Studio for Mac
+    
+    **Option B - Physical Device:**
+    - Apple Developer account required for device provisioning
+    - Configure signing in Visual Studio or Xcode
+  </Step>
+  
+  <Step title="Verify iOS setup">
+    ```bash
+    dotnet build -f net9.0-ios
+    ```
+    
+    Should build without errors.
+  </Step>
+</Steps>
+
+<Warning>
+  iOS development and deployment can only be done on macOS. Windows users can develop the API and Android app but need a Mac for iOS builds.
+</Warning>
+
+## Additional Dependencies
+
+### NuGet Packages
+
+All required packages are specified in the `.csproj` files and will be restored automatically:
+
+**API (`CafeIES.API`):**
+- `Microsoft.AspNetCore.Authentication.JwtBearer` (9.0.0) - JWT authentication
+- `BCrypt.Net-Next` (4.0.3) - Password hashing
+- `QRCoder` (1.4.3) - QR code generation for invitations
+- `Swashbuckle.AspNetCore` (7.2.0) - Swagger/OpenAPI documentation
+
+**MAUI App (`CafeIES.MAUI`):**
+- `CommunityToolkit.Mvvm` (8.3.2) - MVVM helpers
+- `CommunityToolkit.Maui` (9.0.3) - Additional MAUI controls
+- `Microsoft.AspNetCore.SignalR.Client` (9.0.0) - Real-time notifications
+
+### Restore all dependencies
+
+```bash
+cd /path/to/CafeIES
+dotnet restore
+```
+
+## Hardware Requirements
+
+### Minimum Requirements
+- **Processor:** 1.8 GHz or faster (x64 or ARM64)
+- **RAM:** 4 GB (8 GB recommended for MAUI development)
+- **Disk Space:** 10 GB free space
+- **Display:** 1920x1080 or higher resolution
+
+### Recommended for MAUI Development
+- **RAM:** 16 GB or more
+- **Disk Space:** 20 GB for Android SDK and emulators
+- **SSD:** Significantly improves build times
+
+## Network Requirements
+
+### Development
+- HTTPS support on localhost (uses self-signed certificates)
+- Ports:
+  - **API:** `https://localhost:7001` (or port specified in `launchSettings.json`)
+  - **Blazor Admin:** `https://localhost:7100`
+  - **SignalR Hub:** `/hubs/cafeteria` on API port
+
+### Production
+- Valid SSL/TLS certificate for HTTPS
+- Firewall rules allowing:
+  - HTTP/HTTPS (80/443)
+  - SQL Server (1433 or custom port)
+- Domain name or static IP address
+
+## Next Steps
+
+Once you have all requirements installed:
+
+1. [Configure the API](/guides/deployment/api-setup) - Set up appsettings.json and JWT keys
+2. [Run database migrations](/guides/deployment/database-migration) - Initialize the database schema
+3. [Deploy the mobile app](/guides/deployment/mobile-deployment) - Build and run on Android/iOS
+
+<Note>
+  For a complete overview of the project structure, see the [README.md](https://github.com/yourusername/CafeIES) in the source repository.
+</Note>

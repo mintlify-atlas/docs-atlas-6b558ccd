@@ -1,0 +1,117 @@
+---
+title: 'POST /api/auth/registro/alumno'
+description: 'Register a new student account (requires admin validation)'
+---
+
+## Endpoint
+
+<CodeGroup>
+```bash Method and Path
+POST /api/auth/registro/alumno
+```
+</CodeGroup>
+
+## Description
+
+Registers a new student account in the system. The account is created with a `PendienteValidacion` status and must be approved by an administrator before the user can login.
+
+**Authentication Required:** No
+
+## Request Body
+
+<ParamField body="NombreCompleto" type="string" required>
+  Student's full name. Maximum length of 100 characters.
+</ParamField>
+
+<ParamField body="Email" type="string" required>
+  Student's email address. Must be a valid email format and unique in the system.
+</ParamField>
+
+<ParamField body="Password" type="string" required>
+  Student's password. Minimum length of 8 characters.
+</ParamField>
+
+<ParamField body="Turno" type="integer" required>
+  Student's shift assignment. Possible values:
+  - `0` - Mañana (Morning)
+  - `1` - Tarde (Afternoon)
+  - `2` - Noche (Evening)
+</ParamField>
+
+## Response
+
+<ResponseField name="mensaje" type="string">
+  Success message indicating the registration is complete and pending admin validation.
+</ResponseField>
+
+## Example Request
+
+<CodeGroup>
+```bash curl
+curl -X POST https://api.cafeies.com/api/auth/registro/alumno \
+  -H "Content-Type: application/json" \
+  -d '{
+    "NombreCompleto": "María García López",
+    "Email": "maria.garcia@ies.edu",
+    "Password": "mySecureP@ss123",
+    "Turno": 0
+  }'
+```
+
+```json Request Body
+{
+  "NombreCompleto": "María García López",
+  "Email": "maria.garcia@ies.edu",
+  "Password": "mySecureP@ss123",
+  "Turno": 0
+}
+```
+</CodeGroup>
+
+## Example Response
+
+<CodeGroup>
+```json 200 OK
+{
+  "mensaje": "Registro completado. Tu cuenta está pendiente de validación por el administrador."
+}
+```
+
+```json 409 Conflict
+{
+  "mensaje": "Ya existe una cuenta con ese email."
+}
+```
+
+```json 400 Bad Request
+{
+  "type": "https://tools.ietf.org/html/rfc7231#section-6.5.1",
+  "title": "One or more validation errors occurred.",
+  "status": 400,
+  "errors": {
+    "Password": [
+      "The field Password must be a string with a minimum length of 8."
+    ]
+  }
+}
+```
+</CodeGroup>
+
+## Error Codes
+
+| Status Code | Description |
+|-------------|-------------|
+| 200 | Registration successful, account pending validation |
+| 400 | Validation error (invalid format, missing fields, or constraints not met) |
+| 409 | Email already exists in the system |
+
+## Notes
+
+- Emails are automatically converted to lowercase before storage
+- Passwords are securely hashed before being stored in the database
+- New student accounts are created with:
+  - `Rol`: `Alumno` (0)
+  - `Estado`: `PendienteValidacion` (0)
+- Students cannot login until an administrator validates their account
+- The administrator will receive a notification to review and approve the registration
+- This endpoint is for students only; teachers and staff must use the invitation-based registration

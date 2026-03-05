@@ -1,0 +1,269 @@
+---
+title: Managing Products
+description: Add, edit, and organize cafeteria products with categories, pricing, and stock management
+---
+
+The Products page is where you manage your cafeteria's menu. You can add new items, update prices, track stock levels, and control which products are visible to students.
+
+## Viewing the Product Catalog
+
+The products table displays all menu items with the following information:
+
+- **Product name and description** with category emoji
+- **Category** (e.g., Bocadillos, Bebidas, Postres)
+- **Price** in euros
+- **Stock level** with visual indicator
+- **Status** (Active or Hidden)
+
+### Filtering Products
+
+<Steps>
+  <Step title="Search by name">
+    Use the search box with the 🔍 icon to find products by name. The search filters in real-time as you type.
+  </Step>
+  
+  <Step title="Filter by category">
+    Select a category from the dropdown to show only products in that category (e.g., all sandwiches or all drinks).
+  </Step>
+  
+  <Step title="Show hidden products">
+    Check the "Mostrar ocultos" checkbox to include hidden products in the table. Hidden products appear with a grayed-out background.
+  </Step>
+</Steps>
+
+## Adding New Products
+
+<Steps>
+  <Step title="Click New Product">
+    Click the **+ Nuevo producto** button at the top right of the page.
+  </Step>
+  
+  <Step title="Enter product name">
+    In the modal dialog, enter a descriptive name (e.g., "Bocadillo Mixto", "Café con Leche").
+  </Step>
+  
+  <Step title="Add a description">
+    Enter a brief description that will help students identify the product. Keep it concise.
+  </Step>
+  
+  <Step title="Set the price">
+    Enter the price in euros. The price field accepts decimals (e.g., 2.50 for €2.50).
+  </Step>
+  
+  <Step title="Configure stock level">
+    Enter the initial stock quantity:
+    - **-1** = Unlimited stock (product never runs out)
+    - **0 or higher** = Specific quantity available
+  </Step>
+  
+  <Step title="Select a category">
+    Choose the appropriate category from the dropdown. Each category has an emoji that will appear next to the product name.
+  </Step>
+  
+  <Step title="Save the product">
+    Click **Guardar** to create the product. It will immediately appear in the catalog with "Active" status.
+  </Step>
+</Steps>
+
+<Warning>
+  You must create at least one category before adding products. If no categories exist, you'll see a warning message in the modal. Navigate to the Categories page to create categories first.
+</Warning>
+
+### Product Stock Behavior
+
+Stock levels determine availability:
+
+- **-1 (Unlimited)**: Displays ∞ symbol, product always available
+- **0**: Product shows in catalog but cannot be ordered (out of stock)
+- **1-5**: Low stock - displayed with red indicator
+- **6-15**: Medium stock - displayed with yellow indicator
+- **16+**: Good stock - displayed with green indicator
+
+## Editing Products
+
+<Steps>
+  <Step title="Click the Edit button">
+    Find the product in the table and click the **✏️** (pencil) icon in the Actions column.
+  </Step>
+  
+  <Step title="Modify product details">
+    The same modal used for creating products appears, pre-filled with the current values. Update any fields you want to change.
+  </Step>
+  
+  <Step title="Save changes">
+    Click **Guardar** to apply your changes. Updates are immediate and visible to students.
+  </Step>
+</Steps>
+
+<Note>
+  When you update a product, any pending orders already placed with the old price will keep that price. Only new orders will use the updated price.
+</Note>
+
+## Managing Stock Levels
+
+CaféIES provides two ways to update stock levels:
+
+### Quick Stock Edit
+
+For fast stock adjustments without opening the edit modal:
+
+<Steps>
+  <Step title="Locate the stock input">
+    In the Stock column of the product table, find the small numeric input field below the stock indicator bar.
+  </Step>
+  
+  <Step title="Enter new quantity">
+    Type the new stock quantity directly into the input field.
+  </Step>
+  
+  <Step title="Confirm the change">
+    Press Enter or click outside the input. The stock level updates immediately with a new visual indicator.
+  </Step>
+</Steps>
+
+<Note>
+  Quick stock edit only appears for products with limited stock (not unlimited -1 products).
+</Note>
+
+### Stock Edit via Modal
+
+You can also update stock by editing the product:
+
+1. Click the **✏️** edit button
+2. Change the Stock field in the modal
+3. Save the product
+
+### Setting Unlimited Stock
+
+To make a product always available regardless of demand:
+
+<Steps>
+  <Step title="Edit the product">
+    Click the **✏️** edit button for the product.
+  </Step>
+  
+  <Step title="Set stock to -1">
+    In the Stock field, enter **-1**.
+  </Step>
+  
+  <Step title="Save">
+    Click **Guardar**. The product now displays with the ∞ (infinity) symbol and is always orderable.
+  </Step>
+</Steps>
+
+## Controlling Product Visibility
+
+Products can be active (visible to students) or hidden from the menu.
+
+### Hiding a Product
+
+To temporarily remove a product from the student menu without deleting it:
+
+<Steps>
+  <Step title="Find the active product">
+    Locate the product with "Active" status in the table.
+  </Step>
+  
+  <Step title="Click the visibility button">
+    In the Actions column, click the **👁** (eye) icon button.
+  </Step>
+  
+  <Step title="Product hidden">
+    The status changes to "Hidden" (Oculto) and the icon changes to **🔒**. Students can no longer see or order this product.
+  </Step>
+</Steps>
+
+### Activating a Hidden Product
+
+<Steps>
+  <Step title="Show hidden products">
+    Check the "Mostrar ocultos" checkbox at the top of the page.
+  </Step>
+  
+  <Step title="Find the hidden product">
+    Hidden products appear with a grayed-out background in the table.
+  </Step>
+  
+  <Step title="Click the lock button">
+    In the Actions column, click the **🔒** (lock) icon button.
+  </Step>
+  
+  <Step title="Product activated">
+    The status changes to "Active" and students can immediately see and order this product.
+  </Step>
+</Steps>
+
+### When to Hide vs. Delete
+
+**Hide products** when:
+- Item is temporarily unavailable (seasonal items, supply issues)
+- You want to preserve pricing and product history
+- The product may return to the menu later
+
+**Delete products** when:
+- Item is permanently discontinued
+- Product was created by mistake
+- You need to clean up old test data
+
+<Warning>
+  Deleting a product is permanent and cannot be undone. Historical orders that included the deleted product will still show the product name and price, but the product cannot be added to new orders.
+</Warning>
+
+## Deleting Products
+
+<Steps>
+  <Step title="Click the Delete button">
+    In the Actions column, click the **🗑** (trash) icon button.
+  </Step>
+  
+  <Step title="Confirm deletion">
+    A browser confirmation dialog appears: "¿Eliminar este producto? Esta acción no se puede deshacer." Click OK to confirm.
+  </Step>
+  
+  <Step title="Product removed">
+    The product is permanently deleted from the catalog and no longer appears in any view.
+  </Step>
+</Steps>
+
+## Understanding Product Categories
+
+Categories help organize your menu and make it easier for students to find products. Each category has:
+
+- **Emoji**: A visual icon displayed next to products (e.g., 🥪 for sandwiches)
+- **Name**: A descriptive label (e.g., "Bocadillos", "Bebidas", "Postres")
+
+Products must be assigned to a category when created. To manage categories:
+
+1. Navigate to the Categories page from the admin sidebar
+2. Add, edit, or delete categories as needed
+3. Each category can contain unlimited products
+
+<Note>
+  See the Categories page documentation for detailed instructions on creating and managing product categories.
+</Note>
+
+## Best Practices
+
+<Card title="Set Realistic Stock Levels" icon="packages">
+  For popular items, set stock levels that reflect your actual daily supply. Monitor which products run out frequently and adjust stock accordingly.
+</Card>
+
+<Card title="Use Clear Descriptions" icon="align-left">
+  Write product descriptions that answer common student questions (e.g., "Con jamón y queso" for a mixed sandwich). Keep descriptions under 50 characters for best display.
+</Card>
+
+<Card title="Price in €0.05 Increments" icon="euro-sign">
+  Price products in 5-cent increments (€1.50, €2.00, €2.50) to simplify cash handling if you accept physical payment.
+</Card>
+
+<Card title="Use Unlimited Stock Wisely" icon="infinity">
+  Reserve unlimited stock (-1) for products you can always provide (like coffee or water). Use counted stock for prepared items that have daily limits.
+</Card>
+
+<Card title="Hide Instead of Delete" icon="eye-off">
+  Hide seasonal or temporarily unavailable products rather than deleting them. This preserves your configuration and makes reactivation easy.
+</Card>
+
+<Card title="Regular Stock Audits" icon="clipboard-check">
+  At the start of each day or shift, review stock levels and update them to match your actual inventory. Use the quick edit feature for fast updates.
+</Card>

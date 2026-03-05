@@ -1,0 +1,363 @@
+---
+title: 'Schedules (FranjaHoraria)'
+description: 'Manage time slots when different shifts can place orders'
+---
+
+## List Time Slots
+
+<api method="GET" path="/api/admin/horarios" />
+
+Retrieve all configured time slots (franjas horarias) ordered by shift and start time.
+
+### Authentication
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token with Admin role required
+</ParamField>
+
+### Response
+
+<ResponseField name="franjas" type="array">
+  List of time slots ordered by turno (shift), then by horaInicio (start time)
+  
+  <Expandable title="FranjaHorariaDto properties">
+    <ResponseField name="id" type="integer">
+      Time slot ID
+    </ResponseField>
+    
+    <ResponseField name="turno" type="enum">
+      Shift: `Manana` (0), `Tarde` (1), or `Noche` (2)
+    </ResponseField>
+    
+    <ResponseField name="descripcion" type="string">
+      Human-readable description (e.g., "Recreo", "Antes de entrar")
+    </ResponseField>
+    
+    <ResponseField name="horaInicio" type="string">
+      Start time in HH:mm format (e.g., "11:00")
+    </ResponseField>
+    
+    <ResponseField name="horaFin" type="string">
+      End time in HH:mm format (e.g., "11:30")
+    </ResponseField>
+    
+    <ResponseField name="activa" type="boolean">
+      Whether this time slot is currently enabled
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<RequestExample>
+```bash cURL
+curl -X GET "https://api.cafeies.com/api/admin/horarios" \
+  -H "Authorization: Bearer YOUR_ADMIN_TOKEN"
+```
+
+```javascript JavaScript
+const response = await fetch('https://api.cafeies.com/api/admin/horarios', {
+  headers: {
+    'Authorization': 'Bearer YOUR_ADMIN_TOKEN'
+  }
+});
+const franjas = await response.json();
+```
+</RequestExample>
+
+<ResponseExample>
+```json 200 OK
+[
+  {
+    "id": 1,
+    "turno": "Manana",
+    "descripcion": "Antes de entrar",
+    "horaInicio": "08:00",
+    "horaFin": "08:30",
+    "activa": true
+  },
+  {
+    "id": 2,
+    "turno": "Manana",
+    "descripcion": "Recreo",
+    "horaInicio": "11:00",
+    "horaFin": "11:30",
+    "activa": true
+  },
+  {
+    "id": 3,
+    "turno": "Tarde",
+    "descripcion": "Recreo",
+    "horaInicio": "17:00",
+    "horaFin": "17:30",
+    "activa": true
+  }
+]
+```
+</ResponseExample>
+
+---
+
+## Create Time Slot
+
+<api method="POST" path="/api/admin/horarios" />
+
+Create a new time slot configuration for a specific shift.
+
+### Authentication
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token with Admin role required
+</ParamField>
+
+### Request Body
+
+<ParamField body="turno" type="enum" required>
+  Shift: `Manana` (0), `Tarde` (1), or `Noche` (2)
+</ParamField>
+
+<ParamField body="descripcion" type="string" required>
+  Human-readable description (max 60 characters)
+</ParamField>
+
+<ParamField body="horaInicio" type="string" required>
+  Start time in HH:mm format (e.g., "11:00"). Must match regex: `^\d{2}:\d{2}$`
+</ParamField>
+
+<ParamField body="horaFin" type="string" required>
+  End time in HH:mm format (e.g., "11:30"). Must match regex: `^\d{2}:\d{2}$`
+</ParamField>
+
+<ParamField body="activa" type="boolean" default="true">
+  Whether this time slot should be enabled immediately
+</ParamField>
+
+### Response
+
+Returns the created time slot with assigned ID.
+
+<RequestExample>
+```bash cURL
+curl -X POST "https://api.cafeies.com/api/admin/horarios" \
+  -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "turno": "Manana",
+    "descripcion": "Recreo",
+    "horaInicio": "11:00",
+    "horaFin": "11:30",
+    "activa": true
+  }'
+```
+
+```javascript JavaScript
+const response = await fetch('https://api.cafeies.com/api/admin/horarios', {
+  method: 'POST',
+  headers: {
+    'Authorization': 'Bearer YOUR_ADMIN_TOKEN',
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    turno: 'Manana',
+    descripcion: 'Recreo',
+    horaInicio: '11:00',
+    horaFin: '11:30',
+    activa: true
+  })
+});
+const franja = await response.json();
+```
+</RequestExample>
+
+<ResponseExample>
+```json 200 OK
+{
+  "id": 4,
+  "turno": "Manana",
+  "descripcion": "Recreo",
+  "horaInicio": "11:00",
+  "horaFin": "11:30",
+  "activa": true
+}
+```
+
+```json 400 Bad Request
+{
+  "errors": {
+    "horaInicio": [
+      "The field horaInicio must match the regular expression '^\\d{2}:\\d{2}$'."
+    ]
+  }
+}
+```
+</ResponseExample>
+
+---
+
+## Update Time Slot
+
+<api method="PUT" path="/api/admin/horarios/{id}" />
+
+Update an existing time slot configuration.
+
+### Authentication
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token with Admin role required
+</ParamField>
+
+### Path Parameters
+
+<ParamField path="id" type="integer" required>
+  Time slot ID to update
+</ParamField>
+
+### Request Body
+
+<ParamField body="turno" type="enum" required>
+  Shift: `Manana` (0), `Tarde` (1), or `Noche` (2)
+</ParamField>
+
+<ParamField body="descripcion" type="string" required>
+  Human-readable description (max 60 characters)
+</ParamField>
+
+<ParamField body="horaInicio" type="string" required>
+  Start time in HH:mm format. Must match regex: `^\d{2}:\d{2}$`
+</ParamField>
+
+<ParamField body="horaFin" type="string" required>
+  End time in HH:mm format. Must match regex: `^\d{2}:\d{2}$`
+</ParamField>
+
+<ParamField body="activa" type="boolean" default="true">
+  Whether this time slot is enabled
+</ParamField>
+
+### Response
+
+Returns the updated time slot.
+
+<RequestExample>
+```bash cURL
+curl -X PUT "https://api.cafeies.com/api/admin/horarios/4" \
+  -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "turno": "Manana",
+    "descripcion": "Recreo (extendido)",
+    "horaInicio": "11:00",
+    "horaFin": "11:45",
+    "activa": true
+  }'
+```
+
+```javascript JavaScript
+const response = await fetch('https://api.cafeies.com/api/admin/horarios/4', {
+  method: 'PUT',
+  headers: {
+    'Authorization': 'Bearer YOUR_ADMIN_TOKEN',
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    turno: 'Manana',
+    descripcion: 'Recreo (extendido)',
+    horaInicio: '11:00',
+    horaFin: '11:45',
+    activa: true
+  })
+});
+const updated = await response.json();
+```
+</RequestExample>
+
+<ResponseExample>
+```json 200 OK
+{
+  "id": 4,
+  "turno": "Manana",
+  "descripcion": "Recreo (extendido)",
+  "horaInicio": "11:00",
+  "horaFin": "11:45",
+  "activa": true
+}
+```
+
+```json 404 Not Found
+{
+  "mensaje": "Time slot not found"
+}
+```
+</ResponseExample>
+
+---
+
+## Delete Time Slot
+
+<api method="DELETE" path="/api/admin/horarios/{id}" />
+
+Permanently delete a time slot configuration.
+
+### Authentication
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token with Admin role required
+</ParamField>
+
+### Path Parameters
+
+<ParamField path="id" type="integer" required>
+  Time slot ID to delete
+</ParamField>
+
+### Response
+
+Returns `204 No Content` on success.
+
+<RequestExample>
+```bash cURL
+curl -X DELETE "https://api.cafeies.com/api/admin/horarios/4" \
+  -H "Authorization: Bearer YOUR_ADMIN_TOKEN"
+```
+
+```javascript JavaScript
+const response = await fetch('https://api.cafeies.com/api/admin/horarios/4', {
+  method: 'DELETE',
+  headers: {
+    'Authorization': 'Bearer YOUR_ADMIN_TOKEN'
+  }
+});
+```
+</RequestExample>
+
+<ResponseExample>
+```text 204 No Content
+(Empty response body)
+```
+
+```json 404 Not Found
+{
+  "mensaje": "Time slot not found"
+}
+```
+</ResponseExample>
+
+## Implementation Notes
+
+### Time Slot Validation
+- Users can only place orders if they have a turno (shift) assigned
+- The system checks if the current time falls within any active FranjaHoraria for the user's turno
+- Time comparison uses `TimeOnly` to compare current local time against configured slots
+- Admin users (turno = null) can place orders at any time
+
+### Configuration Flexibility
+- Multiple time slots can be configured per shift (e.g., "Before entry" + "Break")
+- Slots can overlap between different shifts
+- Inactive slots (`activa = false`) are ignored during order validation but remain in the database
+- Time format is validated with regex: `^\d{2}:\d{2}$` (HH:mm)
+
+### Best Practices
+- Set reasonable time windows (e.g., 30-minute breaks)
+- Consider cafeteria capacity when configuring overlapping slots
+- Test time slot validation before the school day begins
+- Keep descriptions clear and concise for the mobile app display
+
+Source: `CafeIES.API/Controllers/AdminController.cs:116-168`

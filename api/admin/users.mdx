@@ -1,0 +1,331 @@
+---
+title: 'User Management'
+description: 'Manage users, validate student accounts, and control account status'
+---
+
+## List Users
+
+<api method="GET" path="/api/admin/usuarios" />
+
+Retrieve a list of all users with optional filtering by account status and role.
+
+### Authentication
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token with Admin role required
+</ParamField>
+
+### Query Parameters
+
+<ParamField query="estado" type="enum" optional>
+  Filter by account status: `PendienteValidacion`, `Activa`, `Suspendida`, or `Rechazada`
+</ParamField>
+
+<ParamField query="rol" type="enum" optional>
+  Filter by user role: `Alumno` (0), `Profesor` (1), `Personal` (2), or `Admin` (99)
+</ParamField>
+
+### Response
+
+<ResponseField name="usuarios" type="array">
+  List of users sorted alphabetically by full name
+  
+  <Expandable title="UsuarioDto properties">
+    <ResponseField name="id" type="integer">
+      User ID
+    </ResponseField>
+    
+    <ResponseField name="nombreCompleto" type="string">
+      User's full name
+    </ResponseField>
+    
+    <ResponseField name="email" type="string">
+      User's email address
+    </ResponseField>
+    
+    <ResponseField name="rol" type="enum">
+      User role: `Alumno`, `Profesor`, `Personal`, or `Admin`
+    </ResponseField>
+    
+    <ResponseField name="turno" type="enum" optional>
+      Shift assignment: `Manana`, `Tarde`, or `Noche`. Null for Admin users.
+    </ResponseField>
+    
+    <ResponseField name="estado" type="enum">
+      Account status: `PendienteValidacion`, `Activa`, `Suspendida`, or `Rechazada`
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<RequestExample>
+```bash List All Users
+curl -X GET "https://api.cafeies.com/api/admin/usuarios" \
+  -H "Authorization: Bearer YOUR_ADMIN_TOKEN"
+```
+
+```bash Pending Students
+curl -X GET "https://api.cafeies.com/api/admin/usuarios?estado=PendienteValidacion&rol=Alumno" \
+  -H "Authorization: Bearer YOUR_ADMIN_TOKEN"
+```
+</RequestExample>
+
+<ResponseExample>
+```json 200 OK
+[
+  {
+    "id": 15,
+    "nombreCompleto": "Ana Martínez López",
+    "email": "ana.martinez@estudiante.ies.es",
+    "rol": "Alumno",
+    "turno": "Manana",
+    "estado": "PendienteValidacion"
+  },
+  {
+    "id": 8,
+    "nombreCompleto": "Carlos Pérez",
+    "email": "carlos.perez@ies.es",
+    "rol": "Profesor",
+    "turno": null,
+    "estado": "Activa"
+  }
+]
+```
+</ResponseExample>
+
+---
+
+## Validate Student
+
+<api method="PATCH" path="/api/admin/usuarios/{id}/validar" />
+
+Approve or reject a student account registration. Sets the account state and records validation timestamp.
+
+### Authentication
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token with Admin role required
+</ParamField>
+
+### Path Parameters
+
+<ParamField path="id" type="integer" required>
+  User ID to validate
+</ParamField>
+
+### Query Parameters
+
+<ParamField query="aprobar" type="boolean" required>
+  `true` to approve the account (sets status to `Activa`), `false` to reject (sets status to `Rechazada`)
+</ParamField>
+
+### Response
+
+<ResponseField name="mensaje" type="string">
+  Confirmation message: "Cuenta aprobada." or "Cuenta rechazada."
+</ResponseField>
+
+<RequestExample>
+```bash Approve Student
+curl -X PATCH "https://api.cafeies.com/api/admin/usuarios/15/validar?aprobar=true" \
+  -H "Authorization: Bearer YOUR_ADMIN_TOKEN"
+```
+
+```bash Reject Student
+curl -X PATCH "https://api.cafeies.com/api/admin/usuarios/15/validar?aprobar=false" \
+  -H "Authorization: Bearer YOUR_ADMIN_TOKEN"
+```
+</RequestExample>
+
+<ResponseExample>
+```json 200 OK (Approved)
+{
+  "mensaje": "Cuenta aprobada."
+}
+```
+
+```json 200 OK (Rejected)
+{
+  "mensaje": "Cuenta rechazada."
+}
+```
+
+```json 404 Not Found
+{
+  "mensaje": "User not found"
+}
+```
+</ResponseExample>
+
+---
+
+## Suspend User
+
+<api method="PATCH" path="/api/admin/usuarios/{id}/suspender" />
+
+Suspend a user account. Admin accounts cannot be suspended.
+
+### Authentication
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token with Admin role required
+</ParamField>
+
+### Path Parameters
+
+<ParamField path="id" type="integer" required>
+  User ID to suspend
+</ParamField>
+
+### Response
+
+Returns `204 No Content` on success.
+
+<RequestExample>
+```bash cURL
+curl -X PATCH "https://api.cafeies.com/api/admin/usuarios/15/suspender" \
+  -H "Authorization: Bearer YOUR_ADMIN_TOKEN"
+```
+</RequestExample>
+
+<ResponseExample>
+```text 204 No Content
+(Empty response body)
+```
+
+```json 400 Bad Request
+{
+  "mensaje": "No se puede suspender al admin."
+}
+```
+
+```json 404 Not Found
+{
+  "mensaje": "User not found"
+}
+```
+</ResponseExample>
+
+---
+
+## Reactivate User
+
+<api method="PATCH" path="/api/admin/usuarios/{id}/reactivar" />
+
+Reactivate a suspended or rejected user account. Only works for accounts in `Suspendida` or `Rechazada` status.
+
+### Authentication
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token with Admin role required
+</ParamField>
+
+### Path Parameters
+
+<ParamField path="id" type="integer" required>
+  User ID to reactivate
+</ParamField>
+
+### Response
+
+Returns `204 No Content` on success.
+
+<RequestExample>
+```bash cURL
+curl -X PATCH "https://api.cafeies.com/api/admin/usuarios/15/reactivar" \
+  -H "Authorization: Bearer YOUR_ADMIN_TOKEN"
+```
+</RequestExample>
+
+<ResponseExample>
+```text 204 No Content
+(Empty response body)
+```
+
+```json 400 Bad Request
+{
+  "mensaje": "La cuenta no está suspendida ni rechazada."
+}
+```
+
+```json 404 Not Found
+{
+  "mensaje": "User not found"
+}
+```
+</ResponseExample>
+
+---
+
+## Change User Shift
+
+<api method="PATCH" path="/api/admin/usuarios/{id}/turno" />
+
+Update a user's shift assignment (morning, afternoon, or night).
+
+### Authentication
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token with Admin role required
+</ParamField>
+
+### Path Parameters
+
+<ParamField path="id" type="integer" required>
+  User ID to update
+</ParamField>
+
+### Request Body
+
+<ParamField body="turno" type="enum" required>
+  New shift assignment: `Manana` (0), `Tarde` (1), or `Noche` (2). Can be null for users without shift restrictions.
+</ParamField>
+
+### Response
+
+Returns `204 No Content` on success.
+
+<RequestExample>
+```bash cURL
+curl -X PATCH "https://api.cafeies.com/api/admin/usuarios/15/turno" \
+  -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "turno": "Tarde"
+  }'
+```
+
+```javascript JavaScript
+const response = await fetch('https://api.cafeies.com/api/admin/usuarios/15/turno', {
+  method: 'PATCH',
+  headers: {
+    'Authorization': 'Bearer YOUR_ADMIN_TOKEN',
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    turno: 'Tarde'
+  })
+});
+```
+</RequestExample>
+
+<ResponseExample>
+```text 204 No Content
+(Empty response body)
+```
+
+```json 404 Not Found
+{
+  "mensaje": "User not found"
+}
+```
+</ResponseExample>
+
+## Implementation Notes
+
+- Students (Alumno role) self-register and require admin validation
+- Professors and staff register via invitation links and are auto-approved
+- Admin accounts cannot be suspended for security reasons
+- Suspended or rejected accounts can be reactivated
+- Shift assignments control when users can place orders based on FranjaHoraria configuration
+
+Source: `CafeIES.API/Controllers/AdminController.cs:50-114`

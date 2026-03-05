@@ -1,0 +1,898 @@
+---
+title: 'API (ASP.NET Core)'
+description: 'RESTful API backend with JWT authentication, Entity Framework Core, and SignalR real-time updates'
+icon: 'server'
+---
+
+## Overview
+
+The CaféIES API is built with **ASP.NET Core 8.0** and provides a comprehensive RESTful interface for managing cafeteria operations. It uses **Entity Framework Core** with SQL Server for data persistence, **JWT** for authentication, and **SignalR** for real-time order updates.
+
+<CardGroup cols={2}>
+  <Card title="RESTful Design" icon="code">
+    Clean HTTP API with standard verbs and status codes
+  </Card>
+  <Card title="JWT Authentication" icon="key">
+    Secure token-based auth with role-based authorization
+  </Card>
+  <Card title="Entity Framework" icon="database">
+    Code-first migrations with SQL Server
+  </Card>
+  <Card title="Real-Time SignalR" icon="bolt">
+    WebSocket connections for live order notifications
+  </Card>
+</CardGroup>
+
+## Architecture
+
+### Project Structure
+
+```
+CafeIES.API/
+├── Controllers/
+│   ├── AuthController.cs          # Login, registration, token refresh
+│   ├── ProductosController.cs     # Product CRUD
+│   ├── CategoriasController.cs    # Category management
+│   ├── PedidosController.cs       # Order creation and status
+│   ├── AdminController.cs         # Admin-only operations
+│   └── InvitacionesController.cs  # QR code invitations
+├── Data/
+│   ├── AppDbContext.cs            # EF Core DbContext
+│   └── DbSeeder.cs                # Initial data seeding
+├── Services/
+│   ├── AuthService.cs             # JWT generation, password hashing
+│   └── HorarioService.cs          # Time window validation
+├── Hubs/
+│   └── CafeteriaHub.cs            # SignalR hub for real-time
+├── Migrations/                     # EF Core migration files
+└── Program.cs                      # App startup and middleware
+```
+
+### Middleware Pipeline
+
+The request pipeline is configured in `Program.cs`:
+
+```csharp Program.cs
+var builder = WebApplication.CreateBuilder(args);
+
+// ── Database ──────────────────────────────────────────────────────────────
+builder.Services.AddDbContext<AppDbContext>(opt =>
+    opt.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+// ── Business Services ─────────────────────────────────────────────────────
+builder.Services.AddScoped<AuthService>();
+builder.Services.AddScoped<HorarioService>();
+
+// ── JWT Authentication ────────────────────────────────────────────────────
+var jwtKey = builder.Configuration["Jwt:Key"]!;
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(opt =>
+    {
+        opt.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer           = true,
+            ValidateAudience         = true,
+            ValidateLifetime         = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer              = builder.Configuration["Jwt:Issuer"],
+            ValidAudience            = builder.Configuration["Jwt:Audience"],
+            IssuerSigningKey         = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
+        };
+
+        // SignalR needs token from query string
+        opt.Events = new JwtBearerEvents
+        {
+            OnMessageReceived = ctx =>
+            {
+                var token = ctx.Request.Query["access_token"];
+                if (!string.IsNullOrEmpty(token) &&
+                    ctx.HttpContext.Request.Path.StartsWithSegments("/hubs"))
+                    ctx.Token = token;
+                return Task.CompletedTask;
+            }
+        };
+    });
+
+builder.Services.AddAuthorization();
+
+// ── SignalR ───────────────────────────────────────────────────────────────
+builder.Services.AddSignalR();
+
+// ── CORS (for Blazor admin panel) ─────────────────────────────────────────
+builder.Services.AddCors(opt =>
+    opt.AddPolicy("AllowAdmin", p =>
+        p.SetIsOriginAllowed(origin =>
+                origin.StartsWith("https://localhost") ||
+                origin.StartsWith("http://localhost"))
+         .AllowAnyHeader()
+         .AllowAnyMethod()
+         .AllowCredentials()
+    )
+);
+
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(c =>
+{
+    c.SwaggerDoc("v1", new OpenApiInfo { Title = "CaféIES API", Version = "v1" });
+    
+    // Add JWT authentication to Swagger UI
+    c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Name = "Authorization",
+        Type = SecuritySchemeType.Http,
+        Scheme = "Bearer",
+        BearerFormat = "JWT"
+    });
+    c.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        {
+            new OpenApiSecurityScheme { Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Bearer" } },
+            Array.Empty<string>()
+        }
+    });
+});
+
+builder.Services.AddControllers();
+
+// ────────────────────────────────────────────────────────────────────────────
+var app = builder.Build();
+
+// ── Auto-migrate and seed database on startup ─────────────────────────────
+using (var scope = app.Services.CreateScope())
+{
+    var db     = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    var config = scope.ServiceProvider.GetRequiredService<IConfiguration>();
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+
+    try
+    {
+        await db.Database.MigrateAsync();          // Apply pending migrations
+        await DbSeeder.SeedAdminAsync(db, config); // Create admin user if not exists
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "⚠️ Could not connect to database on startup. Check connection string.");
+        // Don't throw - app still starts, Swagger remains available
+    }
+}
+
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
+
+app.UseHttpsRedirection();
+app.UseCors("AllowAdmin");
+app.UseAuthentication();  // Must come before UseAuthorization
+app.UseAuthorization();
+
+app.MapControllers();
+app.MapHub<CafeteriaHub>("/hubs/cafeteria");
+
+app.Run();
+```
+
+<Note>
+  The database is **automatically migrated** on startup. If the connection fails, the app still runs and Swagger UI remains accessible for debugging.
+</Note>
+
+## Controllers
+
+### AuthController: Authentication
+
+Handles login, registration, and token refresh:
+
+```csharp Controllers/AuthController.cs
+[ApiController]
+[Route("api/[controller]")]
+public class AuthController : ControllerBase
+{
+    private readonly AppDbContext _db;
+    private readonly AuthService _auth;
+
+    // ── POST /api/auth/login ──────────────────────────────────────────────
+    [HttpPost("login")]
+    public async Task<ActionResult<LoginResponse>> Login([FromBody] LoginRequest req)
+    {
+        var usuario = await _db.Usuarios
+            .FirstOrDefaultAsync(u => u.Email == req.Email.ToLower());
+
+        if (usuario is null || !_auth.VerificarPassword(req.Password, usuario.PasswordHash))
+            return Unauthorized(new { mensaje = "Credenciales incorrectas." });
+
+        if (usuario.Estado == EstadoCuenta.PendienteValidacion)
+            return Forbid(); // 403 → app shows "pending approval"
+
+        if (usuario.Estado == EstadoCuenta.Suspendida || usuario.Estado == EstadoCuenta.Rechazada)
+            return Forbid();
+
+        var accessToken  = _auth.GenerarAccessToken(usuario);
+        var refreshToken = _auth.GenerarRefreshToken();
+
+        usuario.RefreshToken       = refreshToken;
+        usuario.RefreshTokenExpiry = DateTime.UtcNow.AddDays(30);
+        await _db.SaveChangesAsync();
+
+        return Ok(new LoginResponse(
+            accessToken,
+            refreshToken,
+            MapUsuarioDto(usuario)));
+    }
+
+    // ── POST /api/auth/registro/alumno ────────────────────────────────────
+    [HttpPost("registro/alumno")]
+    public async Task<ActionResult> RegistroAlumno([FromBody] RegistroAlumnoRequest req)
+    {
+        if (await _db.Usuarios.AnyAsync(u => u.Email == req.Email.ToLower()))
+            return Conflict(new { mensaje = "Ya existe una cuenta con ese email." });
+
+        var usuario = new Usuario
+        {
+            NombreCompleto = req.NombreCompleto,
+            Email          = req.Email.ToLower(),
+            PasswordHash   = _auth.HashPassword(req.Password),
+            Rol            = RolUsuario.Alumno,
+            Turno          = req.Turno,
+            Estado         = EstadoCuenta.PendienteValidacion  // Requires admin approval
+        };
+
+        _db.Usuarios.Add(usuario);
+        await _db.SaveChangesAsync();
+
+        return Ok(new { mensaje = "Registro completado. Tu cuenta está pendiente de validación." });
+    }
+
+    // ── POST /api/auth/registro/invitacion ────────────────────────────────
+    [HttpPost("registro/invitacion")]
+    public async Task<ActionResult<LoginResponse>> RegistroInvitado([FromBody] RegistroInvitadoRequest req)
+    {
+        var invitacion = await _db.Invitaciones
+            .FirstOrDefaultAsync(i => i.Token == req.TokenInvitacion);
+
+        if (invitacion is null || !invitacion.EsValida)
+            return BadRequest(new { mensaje = "El enlace de invitación no es válido o ha expirado." });
+
+        // Assign role based on invitation type
+        var rol = invitacion.Tipo == TipoInvitacion.Profesor
+            ? RolUsuario.Profesor
+            : RolUsuario.Personal;
+
+        var usuario = new Usuario
+        {
+            NombreCompleto  = req.NombreCompleto,
+            Email           = req.Email.ToLower(),
+            PasswordHash    = _auth.HashPassword(req.Password),
+            Rol             = rol,
+            Estado          = EstadoCuenta.Activa,  // Auto-approved
+            FechaValidacion = DateTime.UtcNow
+        };
+
+        _db.Usuarios.Add(usuario);
+        invitacion.UsosActuales++;
+        await _db.SaveChangesAsync();
+
+        // Auto-login
+        var accessToken  = _auth.GenerarAccessToken(usuario);
+        var refreshToken = _auth.GenerarRefreshToken();
+        usuario.RefreshToken = refreshToken;
+        usuario.RefreshTokenExpiry = DateTime.UtcNow.AddDays(30);
+        await _db.SaveChangesAsync();
+
+        return Ok(new LoginResponse(accessToken, refreshToken, MapUsuarioDto(usuario)));
+    }
+
+    // ── POST /api/auth/refresh ────────────────────────────────────────────
+    [HttpPost("refresh")]
+    public async Task<ActionResult<LoginResponse>> Refresh([FromBody] RefreshRequest req)
+    {
+        var usuario = await _db.Usuarios
+            .FirstOrDefaultAsync(u => u.RefreshToken == req.RefreshToken
+                                   && u.RefreshTokenExpiry > DateTime.UtcNow);
+
+        if (usuario is null)
+            return Unauthorized(new { mensaje = "Refresh token inválido o expirado." });
+
+        var accessToken  = _auth.GenerarAccessToken(usuario);
+        var refreshToken = _auth.GenerarRefreshToken();
+        usuario.RefreshToken       = refreshToken;
+        usuario.RefreshTokenExpiry = DateTime.UtcNow.AddDays(30);
+        await _db.SaveChangesAsync();
+
+        return Ok(new LoginResponse(accessToken, refreshToken, MapUsuarioDto(usuario)));
+    }
+}
+```
+
+**Authentication Flow:**
+
+<Steps>
+  <Step title="Login Request">
+    Client sends `POST /api/auth/login` with email and password
+  </Step>
+  <Step title="Password Verification">
+    Server verifies password hash using BCrypt
+  </Step>
+  <Step title="Account Status Check">
+    Returns 403 Forbidden if account is pending, suspended, or rejected
+  </Step>
+  <Step title="Token Generation">
+    Generate JWT access token (15 min) and refresh token (30 days)
+  </Step>
+  <Step title="Response">
+    Return tokens and user info to client
+  </Step>
+  <Step title="Secure Storage">
+    Client stores tokens in secure storage (Keychain/EncryptedPreferences)
+  </Step>
+</Steps>
+
+### ProductosController: Product Management
+
+Public endpoints for browsing, admin endpoints for CRUD:
+
+```csharp Controllers/ProductosController.cs
+[ApiController]
+[Route("api/[controller]")]
+public class ProductosController : ControllerBase
+{
+    private readonly AppDbContext _db;
+
+    // ── GET /api/productos ────────────────────────────────────────────────
+    [HttpGet]
+    [Authorize]  // Any authenticated user
+    public async Task<ActionResult<List<ProductoDto>>> GetAll(
+        [FromQuery] int? categoriaId,
+        [FromQuery] bool? soloActivos = true)
+    {
+        var query = _db.Productos
+            .Include(p => p.Categoria)
+            .AsQueryable();
+
+        if (soloActivos == true)
+            query = query.Where(p => p.Activo);
+
+        if (categoriaId.HasValue)
+            query = query.Where(p => p.CategoriaId == categoriaId.Value);
+
+        var productos = await query
+            .OrderBy(p => p.Categoria.Orden)
+            .ThenBy(p => p.Nombre)
+            .ToListAsync();
+
+        return Ok(productos.Select(MapDto).ToList());
+    }
+
+    // ── POST /api/productos ───────────────────────────────────────────────
+    [HttpPost]
+    [Authorize(Roles = "Admin")]  // Admin only
+    public async Task<ActionResult<ProductoDto>> Crear([FromBody] CrearProductoRequest req)
+    {
+        if (!await _db.Categorias.AnyAsync(c => c.Id == req.CategoriaId))
+            return BadRequest(new { mensaje = "Categoría no válida." });
+
+        var producto = new Producto
+        {
+            Nombre      = req.Nombre,
+            Descripcion = req.Descripcion,
+            Precio      = req.Precio,
+            Stock       = req.Stock,
+            CategoriaId = req.CategoriaId,
+            ImagenUrl   = req.ImagenUrl,
+            Activo      = true
+        };
+
+        _db.Productos.Add(producto);
+        await _db.SaveChangesAsync();
+
+        await _db.Entry(producto).Reference(p => p.Categoria).LoadAsync();
+        return CreatedAtAction(nameof(GetById), new { id = producto.Id }, MapDto(producto));
+    }
+
+    // ── PATCH /api/productos/{id}/stock ───────────────────────────────────
+    [HttpPatch("{id}/stock")]
+    [Authorize(Roles = "Admin")]
+    public async Task<ActionResult> ActualizarStock(int id, [FromBody] ActualizarStockRequest req)
+    {
+        var producto = await _db.Productos.FindAsync(id);
+        if (producto is null) return NotFound();
+
+        producto.Stock = req.NuevoStock;
+        await _db.SaveChangesAsync();
+        return NoContent();
+    }
+
+    // ── PATCH /api/productos/{id}/toggle ──────────────────────────────────
+    [HttpPatch("{id}/toggle")]
+    [Authorize(Roles = "Admin")]
+    public async Task<ActionResult> ToggleActivo(int id)
+    {
+        var producto = await _db.Productos.FindAsync(id);
+        if (producto is null) return NotFound();
+
+        producto.Activo = !producto.Activo;
+        await _db.SaveChangesAsync();
+        return Ok(new { producto.Id, producto.Activo });
+    }
+
+    // ── DELETE /api/productos/{id} ────────────────────────────────────────
+    [HttpDelete("{id}")]
+    [Authorize(Roles = "Admin")]
+    public async Task<ActionResult> Eliminar(int id)
+    {
+        var producto = await _db.Productos.FindAsync(id);
+        if (producto is null) return NotFound();
+
+        // Soft delete - preserves order history
+        producto.Activo = false;
+        await _db.SaveChangesAsync();
+        return NoContent();
+    }
+}
+```
+
+### PedidosController: Order Management
+
+Create orders, check time windows, update status:
+
+```csharp Controllers/PedidosController.cs
+[ApiController]
+[Route("api/[controller]")]
+[Authorize]
+public class PedidosController : ControllerBase
+{
+    private readonly AppDbContext _db;
+    private readonly HorarioService _horario;
+    private readonly IHubContext<CafeteriaHub> _hub;
+
+    // ── GET /api/pedidos/puedo-pedir ──────────────────────────────────────
+    [HttpGet("puedo-pedir")]
+    public async Task<ActionResult<HorarioStatusDto>> PuedoPedir()
+    {
+        var userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
+        var result = await _horario.PuedePedirAhoraAsync(userId);
+
+        return Ok(new HorarioStatusDto(
+            result.Puede,
+            result.Mensaje,
+            result.ProximaFranja?.Descripcion,
+            result.ProximaFranja?.HoraInicio
+        ));
+    }
+
+    // ── POST /api/pedidos ─────────────────────────────────────────────────
+    [HttpPost]
+    public async Task<ActionResult<PedidoDto>> Crear([FromBody] CrearPedidoRequest req)
+    {
+        var userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
+
+        // 1. Check time window
+        var horario = await _horario.PuedePedirAhoraAsync(userId);
+        if (!horario.Puede)
+            return BadRequest(new { mensaje = horario.Mensaje });
+
+        // 2. Validate stock and calculate total
+        var lineas = new List<LineaPedido>();
+        decimal total = 0;
+
+        foreach (var l in req.Lineas)
+        {
+            var producto = await _db.Productos.FindAsync(l.ProductoId);
+            if (producto is null || !producto.Activo)
+                return BadRequest(new { mensaje = $"Producto #{l.ProductoId} no disponible." });
+
+            if (producto.Stock != -1 && producto.Stock < l.Cantidad)
+                return BadRequest(new { mensaje = $"Stock insuficiente para '{producto.Nombre}'." });
+
+            lineas.Add(new LineaPedido
+            {
+                ProductoId     = l.ProductoId,
+                Cantidad       = l.Cantidad,
+                PrecioUnitario = producto.Precio
+            });
+            total += producto.Precio * l.Cantidad;
+        }
+
+        // 3. Generate sequential order number for today
+        var hoy = DateTime.UtcNow.Date;
+        var ultimoNumero = await _db.Pedidos
+            .Where(p => p.FechaCreacion.Date == hoy)
+            .MaxAsync(p => (int?)p.NumeroPedido) ?? 0;
+
+        var pedido = new Pedido
+        {
+            UsuarioId    = userId,
+            NumeroPedido = ultimoNumero + 1,
+            MetodoPago   = req.MetodoPago,
+            Total        = total,
+            Notas        = req.Notas,
+            Lineas       = lineas
+        };
+
+        _db.Pedidos.Add(pedido);
+
+        // 4. Decrement stock
+        foreach (var l in req.Lineas)
+        {
+            var prod = await _db.Productos.FindAsync(l.ProductoId);
+            if (prod!.Stock != -1) prod.Stock -= l.Cantidad;
+        }
+
+        await _db.SaveChangesAsync();
+
+        // 5. Notify cafeteria staff via SignalR
+        var dto = await GetPedidoDtoAsync(pedido.Id);
+        await _hub.Clients.Group("cafeteria").SendAsync("NuevoPedido", dto);
+
+        return CreatedAtAction(nameof(GetById), new { id = pedido.Id }, dto);
+    }
+
+    // ── PATCH /api/pedidos/{id}/estado ────────────────────────────────────
+    [HttpPatch("{id}/estado")]
+    [Authorize(Roles = "Admin,Personal")]  // Staff only
+    public async Task<ActionResult> CambiarEstado(int id, [FromBody] CambiarEstadoRequest req)
+    {
+        var pedido = await _db.Pedidos.FindAsync(id);
+        if (pedido is null) return NotFound();
+
+        pedido.Estado = req.NuevoEstado;
+        await _db.SaveChangesAsync();
+
+        // Notify customer via SignalR
+        await _hub.Clients.Group($"user-{pedido.UsuarioId}")
+            .SendAsync("EstadoPedidoActualizado", new { pedido.Id, Estado = req.NuevoEstado.ToString() });
+
+        return NoContent();
+    }
+
+    // ── GET /api/pedidos/mis-pedidos ──────────────────────────────────────
+    [HttpGet("mis-pedidos")]
+    public async Task<ActionResult<List<PedidoDto>>> MisPedidos()
+    {
+        var userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
+        var pedidos = await _db.Pedidos
+            .Where(p => p.UsuarioId == userId)
+            .OrderByDescending(p => p.FechaCreacion)
+            .Take(20)
+            .Include(p => p.Lineas).ThenInclude(l => l.Producto)
+            .Include(p => p.Usuario)
+            .ToListAsync();
+
+        return Ok(pedidos.Select(MapDto).ToList());
+    }
+}
+```
+
+**Order Creation Flow:**
+
+<Steps>
+  <Step title="Time Validation">
+    Check if current time is within allowed ordering window for user's shift
+  </Step>
+  <Step title="Stock Validation">
+    Verify all products are active and have sufficient stock
+  </Step>
+  <Step title="Total Calculation">
+    Sum up line items using current product prices
+  </Step>
+  <Step title="Order Number">
+    Generate sequential number for today (resets daily)
+  </Step>
+  <Step title="Database Transaction">
+    Create order and decrement stock in single transaction
+  </Step>
+  <Step title="SignalR Notification">
+    Push new order to cafeteria staff's dashboard in real-time
+  </Step>
+</Steps>
+
+### AdminController: Admin Operations
+
+Dashboard stats, user management, time windows:
+
+```csharp Controllers/AdminController.cs
+[ApiController]
+[Route("api/admin")]
+[Authorize(Roles = "Admin")]
+public class AdminController : ControllerBase
+{
+    private readonly AppDbContext _db;
+
+    // ── GET /api/admin/dashboard ──────────────────────────────────────────
+    [HttpGet("dashboard")]
+    public async Task<ActionResult<DashboardDto>> Dashboard()
+    {
+        var hoy = DateTime.UtcNow.Date;
+
+        var pedidosHoy    = await _db.Pedidos.CountAsync(p => p.FechaCreacion.Date == hoy);
+        var ingresosHoy   = await _db.Pedidos
+            .Where(p => p.FechaCreacion.Date == hoy && p.Estado != EstadoPedido.Cancelado)
+            .SumAsync(p => (decimal?)p.Total) ?? 0;
+        var productosActivos   = await _db.Productos.CountAsync(p => p.Activo);
+        var productosStockBajo = await _db.Productos
+            .CountAsync(p => p.Activo && p.Stock >= 0 && p.Stock <= 5);
+        var alumnosPendientes  = await _db.Usuarios
+            .CountAsync(u => u.Estado == EstadoCuenta.PendienteValidacion);
+
+        var pedidosEnCurso = await _db.Pedidos
+            .Include(p => p.Lineas).ThenInclude(l => l.Producto)
+            .Include(p => p.Usuario)
+            .Where(p => p.Estado == EstadoPedido.Pendiente || p.Estado == EstadoPedido.EnPreparacion)
+            .OrderBy(p => p.FechaCreacion)
+            .Take(10)
+            .ToListAsync();
+
+        return Ok(new DashboardDto(
+            pedidosHoy, ingresosHoy,
+            productosActivos, productosStockBajo,
+            alumnosPendientes,
+            pedidosEnCurso.Select(MapPedidoDto).ToList()
+        ));
+    }
+
+    // ── PATCH /api/admin/usuarios/{id}/validar ────────────────────────────
+    [HttpPatch("usuarios/{id}/validar")]
+    public async Task<ActionResult> ValidarAlumno(int id, [FromQuery] bool aprobar)
+    {
+        var user = await _db.Usuarios.FindAsync(id);
+        if (user is null) return NotFound();
+
+        user.Estado          = aprobar ? EstadoCuenta.Activa : EstadoCuenta.Rechazada;
+        user.FechaValidacion = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        return Ok(new { mensaje = aprobar ? "Cuenta aprobada." : "Cuenta rechazada." });
+    }
+
+    // More admin endpoints: suspender, reactivar, horarios, etc.
+}
+```
+
+### CategoriasController: Category Management
+
+Simple CRUD for product categories:
+
+```csharp Controllers/CategoriasController.cs
+[ApiController]
+[Route("api/[controller]")]
+[Authorize]
+public class CategoriasController : ControllerBase
+{
+    private readonly AppDbContext _db;
+
+    [HttpGet]
+    public async Task<ActionResult<List<CategoriaDto>>> GetAll()
+    {
+        var cats = await _db.Categorias
+            .Where(c => c.Activa)
+            .OrderBy(c => c.Orden)
+            .ToListAsync();
+
+        return Ok(cats.Select(c => new CategoriaDto(c.Id, c.Nombre, c.Emoji)).ToList());
+    }
+
+    [HttpPost]
+    [Authorize(Roles = "Admin")]
+    public async Task<ActionResult<CategoriaDto>> Crear([FromBody] CategoriaDto req)
+    {
+        var cat = new Categoria { Nombre = req.Nombre, Emoji = req.Emoji };
+        _db.Categorias.Add(cat);
+        await _db.SaveChangesAsync();
+        return CreatedAtAction(nameof(GetAll), new CategoriaDto(cat.Id, cat.Nombre, cat.Emoji));
+    }
+
+    [HttpDelete("{id}")]
+    [Authorize(Roles = "Admin")]
+    public async Task<ActionResult> Eliminar(int id)
+    {
+        var cat = await _db.Categorias.FindAsync(id);
+        if (cat is null) return NotFound();
+        cat.Activa = false;  // Soft delete
+        await _db.SaveChangesAsync();
+        return NoContent();
+    }
+}
+```
+
+## SignalR Hub
+
+Real-time WebSocket communication:
+
+```csharp Hubs/CafeteriaHub.cs
+/// <summary>
+/// SignalR hub for real-time notifications.
+/// 
+/// Groups:
+///   "cafeteria"     → receives all new orders (admin/staff dashboard)
+///   "user-{userId}" → receives order status updates (customer app)
+/// </summary>
+[Authorize]
+public class CafeteriaHub : Hub
+{
+    public override async Task OnConnectedAsync()
+    {
+        var user = Context.User!;
+
+        // Cafeteria staff join "cafeteria" group
+        if (user.IsInRole("Admin") || user.IsInRole("Personal"))
+            await Groups.AddToGroupAsync(Context.ConnectionId, "cafeteria");
+
+        // All users join their personal group for order updates
+        var userId = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (userId is not null)
+            await Groups.AddToGroupAsync(Context.ConnectionId, $"user-{userId}");
+
+        await base.OnConnectedAsync();
+    }
+}
+```
+
+**SignalR Events:**
+
+- **`NuevoPedido`** → Sent to `cafeteria` group when order is created
+- **`EstadoPedidoActualizado`** → Sent to `user-{id}` when order status changes
+
+<Note>
+  JWT tokens are passed via query string (`?access_token=...`) for SignalR connections since WebSocket protocol doesn't support HTTP headers.
+</Note>
+
+## Services
+
+### AuthService: JWT and Password Hashing
+
+```csharp Services/AuthService.cs
+public class AuthService
+{
+    private readonly IConfiguration _config;
+
+    public string GenerarAccessToken(Usuario usuario)
+    {
+        var claims = new[]
+        {
+            new Claim(ClaimTypes.NameIdentifier, usuario.Id.ToString()),
+            new Claim(ClaimTypes.Email, usuario.Email),
+            new Claim(ClaimTypes.Role, usuario.Rol.ToString())
+        };
+
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_config["Jwt:Key"]!));
+        var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+
+        var token = new JwtSecurityToken(
+            issuer: _config["Jwt:Issuer"],
+            audience: _config["Jwt:Audience"],
+            claims: claims,
+            expires: DateTime.UtcNow.AddMinutes(15),  // Short-lived
+            signingCredentials: creds
+        );
+
+        return new JwtSecurityTokenHandler().WriteToken(token);
+    }
+
+    public string GenerarRefreshToken()
+    {
+        var randomBytes = new byte[64];
+        using var rng = RandomNumberGenerator.Create();
+        rng.GetBytes(randomBytes);
+        return Convert.ToBase64String(randomBytes);
+    }
+
+    public string HashPassword(string password)
+        => BCrypt.Net.BCrypt.HashPassword(password);
+
+    public bool VerificarPassword(string password, string hash)
+        => BCrypt.Net.BCrypt.Verify(password, hash);
+}
+```
+
+### HorarioService: Time Window Validation
+
+Checks if user can order based on current time and shift:
+
+```csharp Services/HorarioService.cs
+public class HorarioService
+{
+    private readonly AppDbContext _db;
+
+    public async Task<(bool Puede, string Mensaje, FranjaHoraria? ProximaFranja)> 
+        PuedePedirAhoraAsync(int userId)
+    {
+        var usuario = await _db.Usuarios.FindAsync(userId);
+        if (usuario is null)
+            return (false, "Usuario no encontrado.", null);
+
+        // Teachers and staff have no time restrictions
+        if (usuario.Rol == RolUsuario.Profesor || usuario.Rol == RolUsuario.Personal)
+            return (true, string.Empty, null);
+
+        // Students must order within their shift's time windows
+        var ahora = TimeOnly.FromDateTime(DateTime.Now);
+        var diaActual = DateTime.Now.DayOfWeek;
+
+        var franjaActual = await _db.FranjasHorarias
+            .Where(f => f.Activa && f.Turno == usuario.Turno)
+            .FirstOrDefaultAsync(f => f.HoraInicio <= ahora && ahora <= f.HoraFin);
+
+        if (franjaActual is not null)
+            return (true, $"Pedidos disponibles hasta las {franjaActual.HoraFin}.", null);
+
+        // Find next available window
+        var proximaFranja = await _db.FranjasHorarias
+            .Where(f => f.Activa && f.Turno == usuario.Turno && f.HoraInicio > ahora)
+            .OrderBy(f => f.HoraInicio)
+            .FirstOrDefaultAsync();
+
+        var mensaje = proximaFranja is not null
+            ? $"Pedidos no disponibles ahora. Próxima ventana: {proximaFranja.Descripcion}."
+            : "No hay más ventanas de pedido hoy.";
+
+        return (false, mensaje, proximaFranja);
+    }
+}
+```
+
+## Database Schema
+
+**Key entities:**
+
+- **Usuario**: Users (students, teachers, staff, admin)
+- **Producto**: Menu items
+- **Categoria**: Product categories
+- **Pedido**: Orders with status tracking
+- **LineaPedido**: Order line items
+- **FranjaHoraria**: Time windows for ordering
+- **Invitacion**: QR code invitation tokens
+
+**Relationships:**
+```
+Usuario 1──N Pedido
+Pedido 1──N LineaPedido N──1 Producto
+Producto N──1 Categoria
+FranjaHoraria N──1 Turno (enum)
+```
+
+## Configuration
+
+**appsettings.json:**
+
+```json
+{
+  "ConnectionStrings": {
+    "DefaultConnection": "Server=localhost;Database=CafeIES;Trusted_Connection=True;TrustServerCertificate=True"
+  },
+  "Jwt": {
+    "Key": "your-super-secret-key-min-32-chars",
+    "Issuer": "CafeIES.API",
+    "Audience": "CafeIES.Apps"
+  }
+}
+```
+
+<Warning>
+  **Production**: Use Azure Key Vault or environment variables for secrets. Never commit `appsettings.json` with real credentials.
+</Warning>
+
+## Swagger / OpenAPI
+
+Interactive API docs available at `https://localhost:50658/swagger`:
+
+- Test all endpoints
+- Authenticate with JWT
+- View request/response schemas
+- Generate client code
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Mobile App" icon="mobile" href="/apps/mobile-app">
+    Learn how the mobile app consumes this API
+  </Card>
+  <Card title="Admin Panel" icon="gauge-high" href="/apps/admin-panel">
+    Explore the admin dashboard
+  </Card>
+  <Card title="Authentication" icon="key" href="/configuration/authentication">
+    Deep dive into JWT implementation
+  </Card>
+  <Card title="Deployment" icon="rocket" href="/guides/deployment/api-setup">
+    Deploy the API to production
+  </Card>
+</CardGroup>
