@@ -1,0 +1,156 @@
+{
+  "projectType": "saas",
+  "projectName": "CaféIES",
+  "projectDescription": "School cafeteria ordering system with mobile app, admin panel, and real-time order tracking.",
+  "theme": "almond",
+  "primaryColor": "#6421e6",
+  "lightColor": "#b48cf4",
+  "darkColor": "#e2dae9",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "architecture"
+            ]
+          },
+          {
+            "group": "Core Features",
+            "pages": [
+              "features/user-management",
+              "features/order-management",
+              "features/schedule-restrictions",
+              "features/real-time-updates"
+            ]
+          },
+          {
+            "group": "Applications",
+            "pages": [
+              "apps/mobile-app",
+              "apps/admin-panel",
+              "apps/api"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/database",
+              "configuration/authentication",
+              "configuration/time-schedules"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Authentication",
+            "pages": [
+              "api/auth/login",
+              "api/auth/register-student",
+              "api/auth/register-invitation",
+              "api/auth/refresh"
+            ]
+          },
+          {
+            "group": "Orders",
+            "pages": [
+              "api/orders/create",
+              "api/orders/my-orders",
+              "api/orders/check-schedule",
+              "api/orders/update-status"
+            ]
+          },
+          {
+            "group": "Products",
+            "pages": [
+              "api/products/list",
+              "api/products/create",
+              "api/products/update",
+              "api/products/toggle-active"
+            ]
+          },
+          {
+            "group": "Admin",
+            "pages": [
+              "api/admin/dashboard",
+              "api/admin/users",
+              "api/admin/invitations",
+              "api/admin/schedules"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Guides",
+        "groups": [
+          {
+            "group": "Deployment",
+            "pages": [
+              "guides/deployment/requirements",
+              "guides/deployment/api-setup",
+              "guides/deployment/database-migration",
+              "guides/deployment/mobile-deployment"
+            ]
+          },
+          {
+            "group": "User Guides",
+            "pages": [
+              "guides/users/student-registration",
+              "guides/users/placing-orders",
+              "guides/users/order-tracking"
+            ]
+          },
+          {
+            "group": "Admin Guides",
+            "pages": [
+              "guides/admin/managing-users",
+              "guides/admin/managing-products",
+              "guides/admin/generating-invitations",
+              "guides/admin/configuring-schedules"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Role-based user registration with validation workflow",
+    "Time-scheduled ordering system by shift",
+    "Real-time order tracking with SignalR",
+    "Cross-platform MAUI mobile app",
+    "Blazor WebAssembly admin panel",
+    "QR code invitation system for staff",
+    "Product catalog with stock management",
+    "JWT authentication with refresh tokens"
+  ],
+  "publicApiSurface": [
+    "POST /api/auth/login",
+    "POST /api/auth/registro/alumno",
+    "POST /api/auth/registro/invitacion",
+    "POST /api/auth/refresh",
+    "GET /api/pedidos/puedo-pedir",
+    "POST /api/pedidos",
+    "GET /api/pedidos/mis-pedidos",
+    "GET /api/pedidos/{id}",
+    "PATCH /api/pedidos/{id}/estado",
+    "GET /api/productos",
+    "POST /api/productos",
+    "PUT /api/productos/{id}",
+    "PATCH /api/productos/{id}/toggle-activo",
+    "GET /api/categorias",
+    "POST /api/invitaciones",
+    "GET /api/admin/dashboard",
+    "GET /api/admin/usuarios",
+    "PATCH /api/admin/usuarios/{id}/validar",
+    "GET /api/admin/franjas-horarias",
+    "PUT /api/admin/franjas-horarias/{id}",
+    "SignalR Hub: /hubs/cafeteria"
+  ]
+}
